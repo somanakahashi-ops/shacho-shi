@@ -1,0 +1,587 @@
+/* ================================================================
+   book.css
+   ── 社長の自分史 電子ブック ─ 見た目（スタイル定義）
+
+   このファイルの責務:
+     ・本の周辺UI（背景・ボタン・カウンター）の装飾
+     ・Canvas 要素自体は「配置」のみ担当する
+
+   このファイルの責務外:
+     ・ページの中身（タイトル・本文の文字スタイル）
+       → これは Canvas に描かれるため、
+         js/PageContentRenderer.js が担当する。
+     ・Canvas の描画解像度（width/height 属性）
+       → JS が動的に変更するため、CSS では表示サイズ
+         （style.width/height）のみを扱う。
+     ・本の角丸
+       → js/BookRenderer.js が roundRect() で
+         Canvas クリップとして実装するため、CSS では設定しない。
+   ================================================================ */
+
+/* box-sizing: border-box について（CSS初心者向けメモ）:
+   通常、要素の width/height は「内側のコンテンツ部分だけ」の
+   サイズを指す（border や padding の分だけ実際の見た目が大きくなる）。
+   border-box を指定すると、width/height に border・padding も
+   含めて計算されるようになり、「指定した数値＝実際の見た目の大きさ」
+   になって扱いやすくなる。* はすべての要素を選ぶ記号なので、
+   ページ全体のすべての要素にこの計算方法を適用している。 */
+* {
+    margin: 0;  /* 要素の外側の余白をリセット（ブラウザ標準のズレを防ぐ） */
+    padding: 0; /* 要素の内側の余白をリセット */
+    box-sizing: border-box;
+}
+
+/* display: flex について（CSS初心者向けメモ）:
+   「フレックスボックス」というレイアウト方法を有効にする指定。
+   子要素を横一列（または flex-direction: column で縦一列）に並べたり、
+   justify-content / align-items で簡単に中央寄せできたりする、
+   CSS で要素を整列させるための標準的な仕組み。 */
+body {
+    font-family: 'Georgia', 'Garamond', serif;
+    /* 羊皮紙・木材をイメージした暖色グラデーション背景 */
+    background: radial-gradient(ellipse at center, #d6d0c4 0%, #b0a898 100%);
+    display: flex;
+    flex-direction: column;   /* 子要素を縦方向に並べる */
+    justify-content: center;  /* 縦方向の中央寄せ（flex-directionの方向に対して） */
+    align-items: center;      /* 横方向の中央寄せ */
+    /* 100vh は「画面の高さの100%」という意味（vh = viewport height）。
+       これにより、コンテンツが少なくても画面の高さいっぱいまで
+       背景色が広がるようになる。 */
+    min-height: 100vh;
+    /* 下部にボタン・カウンターの表示領域を確保 */
+    padding: 30px 20px 110px;
+    /* padding-top の変化を滑らかにし、モード切り替え時に
+       コンテンツがガタッと動くのではなく、すっと動くようにする */
+    transition: padding-top 0.2s ease;
+}
+
+/* ── モバイル NAV バー表示中の body 調整 ─────────────────
+   NAVバーは position:fixed で画面の最前面・最上部に重なって
+   表示されるため、何もしないと本の上部が NAVバーに隠れてしまう。
+   BookController.applyMode() が Mobile モードに入ったときだけ
+   このクラスを body に付け、NAVバーの高さ（56px）分の余白を
+   上に確保することで、本がバーの下からきちんと現れるようにする。 */
+body.has-mobile-navbar {
+    padding-top: 70px; /* NAVバーの高さ(56px) + 少し余裕 */
+}
+
+/*
+ * .book-shell
+ * Canvas を直接 filter で囲むためのラッパー。
+ * drop-shadow を Canvas 要素に直接かけると Canvas 描画内容に
+ * 影響するため、親要素に適用して本全体に落ち影を付ける。
+ *
+ * filter: drop-shadow(...) について:
+ *   box-shadow と似ているが、box-shadow は要素の「四角い枠」に
+ *   沿った影しか付けられないのに対し、drop-shadow は要素の中の
+ *   見た目の形（透明部分を除いた輪郭）に沿って影を付けられる。
+ *   引数は「横方向のズレ 縦方向のズレ ぼかし具合 色」の順。
+ *   ここでは2つの drop-shadow を重ねて、近くの薄い影と
+ *   遠くの濃い影を同時に表現し、より立体的な落ち影にしている。
+ */
+.book-shell {
+    filter:
+        drop-shadow(0 30px 60px rgba(0, 0, 0, 0.48))
+        drop-shadow(0  8px 18px rgba(0, 0, 0, 0.28));
+}
+
+/* Canvas 自体はブロック要素として配置するだけ（サイズは JS が制御） */
+/* width/height は JS（BookController._applyCssScale）が必ず上書きするが、
+   万一 JS の実行が何らかの理由で止まった場合でも要素が画面上で
+   完全に見えなくなる（0×0 になる）のを避けるため、フォールバック値を
+   指定しておく。これにより「真っ白で何も無い」状態と「JSが動いて
+   いない」状態を見分けやすくする（フォールバック枠が見えていれば
+   CSS は読めているが JS が動いていないと判断できる）。 */
+#book-canvas {
+    display: block;
+    width: 100%;
+    max-width: 1100px;
+    height: 680px;
+    background: #fdfcf8; /* JS未実行時でも本のページ色に近い背景を出す */
+}
+
+/*
+ * ドラッグ中の視覚的フィードバック
+ * BookController が dragover/dragleave のタイミングで
+ * このクラスを Canvas に付け外しする（任意の補助 UI）。
+ * 実際のドロップ可否判定（表紙か否か等）はクラスの有無に関わらず
+ * JS 側のロジックで行われるため、これは見た目のヒントに過ぎない。
+ *
+ * outline について: border と似ているが、outline は要素の大きさに
+ * 影響を与えない（border-box の計算に含まれない）枠線。
+ * ドラッグ中だけ一時的に表示する枠として使うのに向いている。
+ */
+#book-canvas.drag-over {
+    outline: 3px dashed #c9a961;
+    outline-offset: 4px; /* 枠線を要素の外側にどれだけ離して描くか */
+}
+
+/* ページカウンター（「見開き 1 / 6」や「ページ 1 / 12」） */
+.page-counter {
+    margin-top: 26px;
+    color: #5c5244;
+    font-size: 0.88em;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.85;
+}
+
+.controls {
+    margin-top: 18px;
+    display: flex;
+    gap: 20px;
+}
+
+/* ナビゲーションボタン共通スタイル */
+.btn {
+    padding: 12px 36px;
+    font-size: 0.88em;
+    border: 2px solid #c9a961;     /* ゴールドボーダー */
+    background: rgba(201, 169, 97, 0.07);
+    color: #6b5030;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: 'Georgia', serif;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.btn:hover:not(:disabled) {
+    background: rgba(201, 169, 97, 0.16);
+    transform: translateY(-2px);   /* 浮き上がりエフェクト */
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.btn:disabled {
+    /* 先頭・末尾ページでは操作不能と分かるよう透明度を下げる */
+    opacity: 0.35;
+    cursor: not-allowed;
+    border-color: #aaa;
+    color: #aaa;
+}
+
+/* 操作ヒントテキスト（PC/Mobile モードで文言が変わる） */
+.hint {
+    margin-top: 14px;
+    color: #7a6c5e;
+    font-size: 0.80em;
+    font-style: italic;
+    opacity: 0.72;
+    letter-spacing: 0.4px;
+}
+
+/* ================================================================
+   目次サイドバー関連のスタイル
+   ================================================================
+   構成:
+     .toc-toggle-btn … 画面左上に固定表示するハンバーガーボタン
+     .toc-panel      … 左からスライドインするサイドバー本体
+     .toc-overlay    … サイドバー表示中に背景を覆う半透明レイヤー
+   ================================================================ */
+
+/* ── ハンバーガーボタン ─────────────────────────────────
+   position: fixed について（CSS初心者向けメモ）:
+     fixed を指定すると、その要素はページのスクロール位置に関係なく
+     常に画面の同じ位置に固定表示される。ヘッダーやフローティング
+     ボタンなど「常に見えていてほしいUI」によく使われる。 */
+.toc-toggle-btn {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 200; /* サイドバーやオーバーレイより手前に表示する */
+    width: 44px;
+    height: 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    background: rgba(253, 252, 248, 0.92);
+    border: 1px solid rgba(201, 169, 97, 0.4);
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.toc-toggle-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+/* ハンバーガーアイコンの3本線。<span>を3つ並べてCSSだけで描いている */
+.toc-toggle-btn span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: #6b5030;
+    border-radius: 1px;
+}
+
+/* ── サイドバー本体 ─────────────────────────────────────
+   transform: translateX(-100%) について:
+     要素を「自分の幅の100%分、左にずらす」という指定。
+     これにより、サイドバーは普段は画面の外（左側）に完全に
+     隠れている状態になる。.open クラスが付くと translateX(0)
+     になり、元の位置（画面内）にスライドして現れる。
+     opacity や display の切り替えと違い、transform は
+     "動いている過程" を transition で滑らかに表現できる。 */
+.toc-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 320px;
+    max-width: 85vw; /* 画面が狭い端末でもサイドバーが画面を覆い尽くさないように */
+    height: 100%;
+    background: linear-gradient(180deg, #fdfcf8 0%, #f5f1e8 100%);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+    z-index: 300; /* オーバーレイより手前、ハンバーガーボタンより手前 */
+    transform: translateX(-100%); /* 初期状態は画面外（左に隠れている） */
+    transition: transform 0.3s ease;
+    overflow-y: auto; /* 章が多くなってパネルの高さを超えたらスクロールできる */
+    display: flex;
+    flex-direction: column;
+}
+
+.toc-panel.open {
+    transform: translateX(0); /* 画面内に表示する */
+}
+
+.toc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 22px 20px 16px;
+    border-bottom: 1px solid rgba(201, 169, 97, 0.3);
+    flex-shrink: 0; /* リストがスクロールしてもヘッダーは常に上部に固定 */
+}
+
+.toc-title {
+    font-family: 'Georgia', serif;
+    font-size: 1.15em;
+    font-weight: 700;
+    color: #4a3f30;
+    letter-spacing: 2px;
+}
+
+.toc-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.6em;
+    line-height: 1;
+    color: #8a7a68;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.toc-close-btn:hover {
+    color: #4a3f30;
+}
+
+.toc-list {
+    list-style: none; /* <ul>標準の「・」マークを消す */
+    padding: 10px 0;
+    margin: 0;
+    overflow-y: auto;
+    /* flex: 1 について（CSS初心者向けメモ）:
+       親要素（.toc-panel）が display:flex な縦並びレイアウトのとき、
+       flex: 1 を指定すると「残りのスペースをすべて使う」という
+       意味になる。これにより、ヘッダー・リスト・フッターのうち
+       リストだけが伸び縮みし、フッター（PDFボタン）は常に
+       パネルの一番下に固定されたまま表示される。 */
+    flex: 1;
+}
+
+/* ── 目次パネル下部：PDF書き出し領域 ───────────────────── */
+/* ── 設定セクション（音ON/OFF・自動ページ送り） ───────── */
+.toc-settings {
+    flex-shrink: 0;
+    padding: 16px 20px 0;
+    border-top: 1px solid rgba(201, 169, 97, 0.3);
+}
+
+.toc-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'Georgia', serif;
+    font-size: 0.88em;
+    color: #4a3f30;
+    cursor: pointer;
+    margin-bottom: 12px;
+}
+
+/* checkbox の見た目はブラウザ標準のままにし、
+   サイズだけ少し大きくしてタップしやすくする */
+.toc-toggle-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #c9a961; /* チェック時の色をテーマカラーに合わせる */
+}
+
+.auto-play-btn {
+    width: 100%;
+    padding: 10px 16px;
+    background: rgba(201, 169, 97, 0.08);
+    border: 1px solid rgba(201, 169, 97, 0.4);
+    border-radius: 6px;
+    color: #6b5030;
+    font-family: 'Georgia', serif;
+    font-size: 0.88em;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.auto-play-btn:hover {
+    background: rgba(201, 169, 97, 0.18);
+}
+
+/* 自動ページ送り中はボタンの見た目を変えて「今動いている」ことを示す */
+.auto-play-btn.active {
+    background: rgba(201, 169, 97, 0.3);
+    border-color: #c9a961;
+}
+
+.toc-footer {
+    flex-shrink: 0; /* リストが伸びても、このフッターは縮まない */
+    padding: 16px 20px 20px;
+    border-top: 1px solid rgba(201, 169, 97, 0.3);
+    background: rgba(253, 252, 248, 0.6);
+}
+
+.pdf-export-btn {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(201, 169, 97, 0.12);
+    border: 1px solid rgba(201, 169, 97, 0.5);
+    border-radius: 6px;
+    color: #6b5030;
+    font-family: 'Georgia', serif;
+    font-size: 0.92em;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.pdf-export-btn:hover:not(:disabled) {
+    background: rgba(201, 169, 97, 0.22);
+    transform: translateY(-1px);
+}
+
+.pdf-export-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pdf-export-status {
+    margin-top: 8px;
+    font-size: 0.78em;
+    color: #8a7a68;
+    text-align: center;
+    min-height: 1.2em; /* テキストが無い時もレイアウトが詰まらないように高さを確保 */
+}
+
+/* 目次の各項目（章タイトル）を表すボタン。
+   <button> を使うことでキーボード操作（Tab+Enter）にも
+   標準で対応できる（<div>をクリックさせるより親切なUI）。 */
+.toc-item-btn {
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-left: 3px solid transparent; /* 現在地ハイライト用の余白を先に確保 */
+    padding: 12px 20px 12px 17px;
+    cursor: pointer;
+    font-family: 'Georgia', serif;
+    color: #4a3f30;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.toc-item-btn:hover {
+    background: rgba(201, 169, 97, 0.08);
+}
+
+/* 現在表示中の章に対応する項目につける目印
+   （JS の updateUI() が現在ページに応じて付け外しする） */
+.toc-item-btn.current {
+    border-left-color: #c9a961;
+    background: rgba(201, 169, 97, 0.12);
+}
+
+.toc-item-chapter {
+    display: block;
+    font-size: 0.78em;
+    color: #c9a961;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+.toc-item-title {
+    display: block;
+    font-size: 0.98em;
+    font-weight: 600;
+}
+
+.toc-item-page {
+    display: block;
+    font-size: 0.75em;
+    color: #aaa;
+    margin-top: 3px;
+}
+
+/* ── 背景オーバーレイ ───────────────────────────────────
+   サイドバーが閉じている間は pointer-events: none にして、
+   透明な層がクリックを奪わないようにしている
+   （opacity:0 だけでは「見えないが裏でクリックを邪魔する」状態に
+   なってしまうため、pointer-events も一緒に切り替える必要がある）。 */
+.toc-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(20, 15, 10, 0.45);
+    z-index: 250; /* サイドバー(300)より奥、本体コンテンツより手前 */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.toc-overlay.open {
+    opacity: 1;
+    pointer-events: auto; /* 開いている間だけクリックでサイドバーを閉じられるようにする */
+}
+
+/* ================================================================
+   読了プログレスバー
+   ================================================================
+   画面最上部に固定表示する薄い帯。track（背景の薄い線）の上に
+   fill（実際に読んだ分量を示す色付きの線）を重ねる、よくある
+   「プログレスバー」の作り方。fill の幅（%）を JS が動的に
+   書き換えることで、ページが進むほど線が伸びていく見た目になる。
+   ================================================================ */
+.progress-bar-track {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgba(0, 0, 0, 0.08);
+    z-index: 400; /* 目次サイドバー(300)・NAVバーよりも最前面に出す */
+}
+
+.progress-bar-fill {
+    height: 100%;
+    width: 0%; /* 初期値。JS（updateUI）が現在地に応じて書き換える */
+    background: linear-gradient(90deg, #c9a961, #a8854a);
+    transition: width 0.4s ease; /* 幅が変わるときに滑らかに伸び縮みする */
+}
+
+/* ================================================================
+   モバイル用 NAV バー（画面上部の固定ヘッダー）
+   ================================================================
+   スマートフォンアプリによくある「上部に固定された帯状のヘッダー」
+   を再現する。PC モードでは丸ごと非表示にし、今までと同じ
+   レイアウト（左上に浮いたハンバーガー、下部にカウンター）を保つ。
+
+   表示の切り替え方法（JS との連携）:
+     BookController.applyMode() が isMobile かどうかに応じて、
+     このバーに .visible クラスを付け外しする。
+     同時に、ハンバーガーボタン（#toc-toggle-btn）と
+     ページカウンター（#page-counter）の「親要素」を
+     jQuery の appendTo() で実際に動かし、NAVバーの中に
+     入れたり、元の場所に戻したりする。
+   ================================================================ */
+.mobile-navbar {
+    display: none; /* 既定では非表示（PCモード）。.visible が付くと表示される */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    z-index: 150; /* ハンバーガー単体より少し奥、目次サイドバー(300)より奥 */
+    background: rgba(253, 252, 248, 0.95);
+    border-bottom: 1px solid rgba(201, 169, 97, 0.3);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+
+    /* 3つの領域（左・中央タイトル・右）を横一列に並べ、
+       左右の領域は固定幅、中央タイトルは残りの幅いっぱいに広がる
+       ようにする。 */
+    align-items: center;
+    padding: 0 8px;
+}
+
+.mobile-navbar.visible {
+    display: flex; /* .visible が付いたときだけ実際に表示する */
+}
+
+.mobile-navbar-left,
+.mobile-navbar-right {
+    width: 56px; /* ハンバーガーボタン・ページ番号それぞれの専用スペース */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0; /* 中央タイトルが伸びても、この幅は縮めない */
+}
+
+.mobile-navbar-right {
+    justify-content: flex-end;
+    padding-right: 8px;
+}
+
+.mobile-navbar-title {
+    flex: 1; /* 残りの幅すべてを使い、左右のスペースの間で中央寄りに表示される */
+    text-align: center;
+    font-family: 'Georgia', serif;
+    font-weight: 700;
+    font-size: 0.95em;
+    color: #4a3f30;
+    letter-spacing: 1px;
+    overflow: hidden;
+    white-space: nowrap; /* タイトルが長くても折り返さず、収まらない分は省略 */
+    text-overflow: ellipsis; /* 収まらない部分を「…」で表現する */
+}
+
+/* ── ハンバーガーボタンの配置切り替え ─────────────────────
+   PC モード（既定）: 画面左上に position:fixed で固定表示。
+   既存の .toc-toggle-btn のスタイル（このファイルの前の方で
+   定義済み）がそのまま使われる。
+
+   Mobile モード（.in-navbar が付いたとき）: position を
+   static（通常の配置）に戻し、NAVバー内の小さな領域
+   （#mobile-navbar-left）にちょうど収まる見た目に変える。
+   実際に親要素を移動させるのは JS（appendTo）の仕事で、
+   このクラスは「移動された後の見た目」だけを担当する。 */
+.toc-toggle-btn.in-navbar {
+    position: static;
+    top: auto;
+    left: auto;
+    box-shadow: none;
+    border: none;
+    background: none;
+    width: 40px;
+    height: 40px;
+}
+
+.toc-toggle-btn.in-navbar:hover {
+    transform: none; /* NAVバー内では浮き上がりエフェクトを無効化（窮屈な見た目になるため） */
+}
+
+/* ── ページカウンターの配置切り替え ───────────────────────
+   PC モード（既定）: 本の下に表示。既存の .page-counter スタイルを使う。
+   Mobile モード（.in-navbar が付いたとき）: NAVバー右側に
+   収まるよう、文字サイズと余白を小さくする。 */
+.page-counter.in-navbar {
+    margin-top: 0;
+    font-size: 0.72em;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+    

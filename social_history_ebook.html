@@ -1804,12 +1804,9 @@ class PageFlipEffect {
      */
     drawPCCurl(t, front, back, reverse = false, sliceOverride) {
         const { PC_W, PC_H, PAGE_W, SPINE_X, NUM_SLICES: NUM_SLICES_DEFAULT, CURL_DELAY } = this.C;
-        // sliceOverride が渡されていれば（ドラッグ中の軽量モード等）それを
-        // 使い、渡されていなければ通常の NUM_SLICES を使う。
-        // drawMobileCurl と同じ「||」の使い方（0や未指定なら右側を採用）。
         const NUM_SLICES = sliceOverride || NUM_SLICES_DEFAULT;
         const ctx = this.ctx;
-        const dir = reverse ? -1 : 1; // freeX 計算に使う符号（前へ なら反転）
+        const dir = 1;
 
         // ── パフォーマンス最適化：再利用バッファを使う ──
         // constructor で確保済みの Float64Array（_frontY 等）を使い、
@@ -2717,25 +2714,22 @@ class BookAnimator {
         if (toIdx < 0 || toIdx >= spreads.length || toIdx === currentSpread) return;
 
         this.state.isAnimating = true;
-        this.state.progress    = 0;
         this.state.reverse     = reverse;
 
         if (!reverse) {
-            // 「次へ」: 現在の右ページ（表）→ 移動先の左ページ（裏）
+            this.state.progress = 0;
             this.state.offFront = this.contentRenderer.preRenderPage(spreads[currentSpread].right, true);
             this.state.offBack  = this.contentRenderer.preRenderPage(spreads[toIdx].left,          false);
         } else {
-            // 「前へ」: 現在の左ページ（表）→ 移動先の右ページ（裏）
-            // すでに開いている左ページを「閉じて」前の見開きの右ページに
-            // 戻っていく動きになるため、front/back の役割が次へとは逆になる。
-            this.state.offFront = this.contentRenderer.preRenderPage(spreads[currentSpread].left, false);
-            this.state.offBack  = this.contentRenderer.preRenderPage(spreads[toIdx].right,         true);
+            this.state.progress = 1.0;
+            this.state.offFront = this.contentRenderer.preRenderPage(spreads[toIdx].right,         true);
+            this.state.offBack  = this.contentRenderer.preRenderPage(spreads[currentSpread].left,  false);
         }
 
         this._runLoop(onFrame, () => {
             this._resetState();
             onComplete(toIdx);
-        }, false, durationMs);
+        }, reverse, durationMs);
     }
 
     /**
@@ -2951,10 +2945,8 @@ class BookAnimator {
                     this.state.offFront = this.contentRenderer.preRenderPage(items[curIdx-1].fn,   items[curIdx-1].isRight);
                     this.state.offBack  = this.contentRenderer.preRenderPage(items[curIdx].fn,     items[curIdx].isRight);
                 } else {
-                    // PC: 「前へ」は現在見開きの左ページが消えて、
-                    // 前の見開きの右ページが現れる（startFlipPC の reverse と同じ組み合わせ）
-                    this.state.offFront = this.contentRenderer.preRenderPage(items[curIdx].left,     false);
-                    this.state.offBack  = this.contentRenderer.preRenderPage(items[curIdx-1].right,  true);
+                    this.state.offFront = this.contentRenderer.preRenderPage(items[curIdx-1].right,  true);
+                    this.state.offBack  = this.contentRenderer.preRenderPage(items[curIdx].left,     false);
                 }
             } else {
                 // 先頭で右方向、または末尾で左方向 → 動かせる先がない

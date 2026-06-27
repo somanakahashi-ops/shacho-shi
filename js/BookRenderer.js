@@ -365,4 +365,98 @@ class BookRenderer {
 
         ctx.restore();
     }
+
+    /**
+     * パラパラめくり（複数シートが少しずつタイミングをずらして同時に
+     * めくれる）の 1 フレームを PC（見開き）モードで描画する。
+     *
+     * 通常の renderPC は「1枚だけ」めくる前提だが、これは複数の
+     * 飛行中シートを下から順に重ね描きする点が異なる。呼び出し側
+     * （BookController._runFlutter）が各フレームで以下を組み立てて渡す:
+     *
+     *   leftBaseFn  : 左半分の最背面（直近に着地したシートの裏面、
+     *                 まだ何も着地していなければ開始見開きの左ページ）
+     *   rightBaseFn : 右半分の最背面（右の山の一番下＝着地先の右ページ）
+     *   pileTop     : まだめくられていない山の最上面 { side, fn }（無ければ null）
+     *   curls       : 飛行中シートの配列 [{ t, front, back, reverse }]
+     *                 配列の順に重ね描きするので、呼び出し側で z 順を決める。
+     *
+     * @param {Function} leftBaseFn
+     * @param {Function} rightBaseFn
+     * @param {{side:'left'|'right', fn:Function}|null} pileTop
+     * @param {Array<{t:number, front:HTMLCanvasElement, back:HTMLCanvasElement, reverse:boolean}>} curls
+     */
+    renderFlutterPC(leftBaseFn, rightBaseFn, pileTop, curls) {
+        const { PC_W, PC_H, PAGE_W, SPINE_X } = this.C;
+        const ctx = this.ctx;
+
+        ctx.clearRect(0, 0, PC_W, PC_H);
+        ctx.save();
+        ctx.clip(this._pcClipPath);
+
+        // 左半分の最背面
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, SPINE_X, PC_H);
+        ctx.clip();
+        leftBaseFn(ctx);
+        ctx.restore();
+
+        // 右半分の最背面
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(SPINE_X, 0, PAGE_W, PC_H);
+        ctx.clip();
+        rightBaseFn(ctx);
+        ctx.restore();
+
+        // まだめくられていない山の最上面（次にめくられる面）
+        if (pileTop) {
+            ctx.save();
+            ctx.beginPath();
+            if (pileTop.side === 'right') ctx.rect(SPINE_X, 0, PAGE_W, PC_H);
+            else                          ctx.rect(0, 0, SPINE_X, PC_H);
+            ctx.clip();
+            pileTop.fn(ctx);
+            ctx.restore();
+        }
+
+        // 飛行中のシートを順に重ねる
+        for (const c of curls) {
+            this.flipEffect.drawPCCurl(c.t, c.front, c.back, c.reverse);
+        }
+
+        this.drawSpine();
+        ctx.restore();
+    }
+
+    /**
+     * パラパラめくりの 1 フレームを Mobile（1ページ）モードで描画する。
+     *
+     *   basePage    : 最背面（直近に現れたページ、無ければ開始ページ）
+     *   pileTopPage : まだめくられていない山の最上面（無ければ null）
+     *   curls       : 飛行中シートの配列 [{ t, front }]
+     *                 配列の順に重ね描き（奥→手前）。
+     *
+     * @param {HTMLCanvasElement} basePage
+     * @param {HTMLCanvasElement|null} pileTopPage
+     * @param {Array<{t:number, front:HTMLCanvasElement}>} curls
+     */
+    renderFlutterMobile(basePage, pileTopPage, curls) {
+        const { MOB_W, MOB_H } = this.C;
+        const ctx = this.ctx;
+
+        ctx.clearRect(0, 0, MOB_W, MOB_H);
+        ctx.save();
+        ctx.clip(this._mobileClipPath);
+
+        ctx.drawImage(basePage, 0, 0);
+        if (pileTopPage) ctx.drawImage(pileTopPage, 0, 0);
+
+        for (const c of curls) {
+            this.flipEffect.drawMobileCurl(c.t, c.front);
+        }
+
+        ctx.restore();
+    }
 }

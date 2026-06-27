@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ebook",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "D:/SPELLERS/社長史"],
+      "port": 8080
+    }
+  ]
+}

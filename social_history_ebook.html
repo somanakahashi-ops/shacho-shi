@@ -2495,21 +2495,30 @@ class BookRenderer {
         } else {
             const cur  = spreads[currentSpread];
             const next = spreads[nextSpreadIdx];
+            const isReverse = animState.reverse;
 
-            // [1] 新しい右ページ（右半分のみに表示）
+            // [1] 右半分の背景ページ
             ctx.save();
             ctx.beginPath();
             ctx.rect(SPINE_X, 0, PAGE_W, PC_H);
             ctx.clip();
-            next.right(ctx);
+            if (isReverse) {
+                cur.right(ctx);
+            } else {
+                next.right(ctx);
+            }
             ctx.restore();
 
-            // [2] 現在の左ページ（左半分のみに表示）
+            // [2] 左半分の背景ページ
             ctx.save();
             ctx.beginPath();
             ctx.rect(0, 0, SPINE_X, PC_H);
             ctx.clip();
-            cur.left(ctx);
+            if (isReverse) {
+                next.left(ctx);
+            } else {
+                cur.left(ctx);
+            }
             ctx.restore();
 
             // [3] 捲れていくページ（クリップなし: 左右両側にまたがる）

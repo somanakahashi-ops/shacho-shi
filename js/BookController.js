@@ -692,82 +692,154 @@ class BookController {
     }
 
     /**
-     * 複数ページ/見開きを連続でめくる「パラパラめくり」アニメーションを行う
+     * 複数ページ/見開きを「ひとまとめに」めくる自然なパラパラめくり
+     * （リフル）アニメーションを行う。
      *
-     * 仕組み:
-     *   目的地まで、1ページ（または1見開き）ずつ startFlipMobile /
-     *   startFlipPC を「短い時間（FLUTTER_MS）」で連続実行する。
-     *   各ステップが完了したら次のステップを開始する、という
-     *   再帰的な呼び出しで「連鎖アニメーション」を作っている。
+     * 旧実装との違い:
+     *   旧: 1枚を完全にめくり終えてから次の1枚を開始する逐次再生
+     *       （カクカクして不自然だった）。
+     *   新: 複数のシートを「めくり始めのタイミングを少しずつずらして」
+     *       1本の RAF ループで同時進行させる。前のシートがまだ
+     *       めくれている最中に次が動き出すため、紙を指で弾いたような
+     *       連続した自然な動きになる。
      *
-     *   これにより、既存のカール描画ロジック（drawPCCurl /
-     *   drawMobileCurl）を一切変更せずに、複数ページを
-     *   パラパラと連続でめくる効果が実現できる
-     *   （1ページぶんのアニメーション自体は今までと全く同じ仕組み）。
+     * 方向の扱い（実装をシンプルかつ確実にするための工夫）:
+     *   常に「小さいインデックス lo → 大きいインデックス hi」へ進む
+     *   “順方向リフル”として 1 つだけ実装する。
+     *     ・前へ進む（target>start）: そのまま時間 τ=elapsed で再生。
+     *     ・後ろへ戻る（target<start）: 同じ順方向リフルを τ=total-elapsed と
+     *       時間を逆回しで再生する。これにより「正しい順方向アニメの
+     *       完全な逆再生」となり、戻り方向専用のロジックを別に書かずに
+     *       確実に整合する。
      *
-     * ページめくり音について:
-     *   各ステップの開始時に audioPlayer.play() を呼ぶ。
-     *   AudioPlayer.play() は呼ばれるたびに currentTime を 0 に
-     *   戻してから再生するため、前の音が鳴り終わる前に次の音が
-     *   重なって再生されても「毎回頭から鳴る」形になり、
-     *   不自然な音の重複にはならない。
+     * 各フレームの重ね合わせ（下→上）:
+     *   ① 左半分の最背面 = 直近に着地したシートの裏面（無ければ開始の左頁）
+     *   ② 右半分の最背面 = 着地先（hi）の右頁（右の山の一番下）
+     *   ③ 山の最上面     = まだめくり始めていない一番手前の頁
+     *   ④ 飛行中シート群 = 開始タイミングがずれた複数の捲れ
      *
      * @param {number} targetIdx - 最終的な移動先のインデックス
      *        （Mobile: pages配列の番号 / PC: spreads配列の番号）
-     * @returns {Promise<void>} 全ステップが完了したら解決される
+     * @returns {Promise<void>} 全体が完了したら解決される
      * @private
      */
     _runFlutter(targetIdx) {
         return new Promise((resolve) => {
-            const step = async () => {
-                const isMobile = this.isMobile;
-                const currentIdx = isMobile ? this.currentPageIdx : this.currentSpread;
+            const isMobile = this.isMobile;
+            const startIdx = isMobile ? this.currentPageIdx : this.currentSpread;
+            if (targetIdx === startIdx) { resolve(); return; }
 
-                if (currentIdx === targetIdx) {
-                    // 目的地に到達した。最後に通常の状態確認を行って終了する。
-                    if (!isMobile) {
-                        await this._preloadCachedImage(this.currentSpread);
-                    }
-                    this.render();
-                    this.updateUI();
-                    resolve();
-                    return;
+            const forward = targetIdx > startIdx;
+            const loIdx = Math.min(startIdx, targetIdx);
+            const hiIdx = Math.max(startIdx, targetIdx);
+            const N     = hiIdx - loIdx;          // めくるシート枚数
+            const cr    = this.contentRenderer;
+
+            // ── 各シートの面を事前レンダリング（preRenderPage はキャッシュ付き）──
+            // 順方向 lo→hi として用意する。
+            //   PC:     シート i の表 = spreads[lo+i].right、裏 = spreads[lo+i+1].left
+            //   Mobile: シート i の面 = pages[lo+i]
+            const fronts = [], backs = [];
+            for (let k = 0; k < N; k++) {
+                const i = loIdx + k;
+                if (isMobile) {
+                    const pg = cr.pages[i];
+                    fronts.push(cr.preRenderPage(pg.fn, pg.isRight));
+                } else {
+                    fronts.push(cr.preRenderPage(cr.spreads[i].right, true));
+                    backs.push(cr.preRenderPage(cr.spreads[i + 1].left, false));
                 }
+            }
 
-                // 目的地が現在地より後ろなら 'next' 方向、前なら 'prev' 方向。
-                const goingForward = targetIdx > currentIdx;
-                const nextIdx = goingForward ? currentIdx + 1 : currentIdx - 1;
+            // ── タイミング（総時間が長くなりすぎたら比例縮小）──
+            const C = this.C;
+            let sheetMs = C.FLUTTER_SHEET_MS;
+            let stagger = C.FLUTTER_STAGGER_MS;
+            let total   = stagger * (N - 1) + sheetMs;
+            if (total > C.FLUTTER_MAX_MS) {
+                const s = C.FLUTTER_MAX_MS / total;
+                sheetMs *= s; stagger *= s; total = C.FLUTTER_MAX_MS;
+            }
 
-                this.audioPlayer.play(); // 各ページがめくれるタイミングで毎回鳴らす
+            // 他の操作（goNext/goPrev 等）と競合しないようアニメ中フラグを立てる
+            this.animator.state.isAnimating = true;
+
+            const t0 = performance.now();
+            this.audioPlayer.play();
+            let soundsPlayed = 1;
+            const soundCap = Math.min(N, 8); // 鳴らしすぎないよう上限
+
+            const frame = (now) => {
+                const elapsed = Math.min(now - t0, total);
+                // 後ろへ戻るときは時間を逆回しして順方向リフルを逆再生する
+                const tau = forward ? elapsed : (total - elapsed);
+
+                // シート k の進捗 t（0=未着手, 1=着地）
+                const tk = (k) => {
+                    const v = (tau - k * stagger) / sheetMs;
+                    return v < 0 ? 0 : (v > 1 ? 1 : v);
+                };
+
+                // landedMax: すでに着地し終えた最大シート番号（-1 なら無し）
+                let landedMax = -1;
+                for (let k = N - 1; k >= 0; k--) { if (tk(k) >= 1) { landedMax = k; break; } }
+                // m: まだめくり始めていない最小シート番号（-1 なら無し）
+                let m = -1;
+                for (let k = 0; k < N; k++) { if (tk(k) <= 0) { m = k; break; } }
 
                 if (isMobile) {
-                    this.animator.startFlipMobile(
-                        this.contentRenderer.pages, currentIdx, nextIdx,
-                        () => this.render(),
-                        (finishedIdx) => {
-                            this.currentPageIdx = finishedIdx;
-                            this.currentSpread  = Math.floor(finishedIdx / 2);
-                            step(); // 次のページへ続ける（再帰呼び出し）
-                        },
-                        !goingForward,       // reverse: 後退方向なら true
-                        this.C.FLUTTER_MS    // 通常より短い時間で1ページをめくる
-                    );
+                    // 最背面 = 直近に現れたページ（無ければ開始ページ lo）
+                    const baseIdx = loIdx + landedMax + 1; // landedMax=-1 → lo
+                    const basePage = cr.preRenderPage(cr.pages[baseIdx].fn, cr.pages[baseIdx].isRight);
+                    const pileTop  = (m >= 0)
+                        ? cr.preRenderPage(cr.pages[loIdx + m].fn, cr.pages[loIdx + m].isRight)
+                        : null;
+                    // 手前ほど後で描く（奥→手前）。手前 = 進捗が大きい小さい k。
+                    const curls = [];
+                    for (let k = N - 1; k >= 0; k--) {
+                        const t = tk(k);
+                        if (t > 0 && t < 1) curls.push({ t, front: fronts[k] });
+                    }
+                    this.bookRenderer.renderFlutterMobile(basePage, pileTop, curls);
                 } else {
-                    this.animator.startFlipPC(
-                        this.contentRenderer.spreads, currentIdx, nextIdx,
-                        () => this.render(),
-                        (finishedIdx) => {
-                            this.currentSpread  = finishedIdx;
-                            this.currentPageIdx = finishedIdx * 2;
-                            step(); // 次の見開きへ続ける（再帰呼び出し）
-                        },
-                        !goingForward,
-                        this.C.FLUTTER_MS
-                    );
+                    const spreads = cr.spreads;
+                    // 左半分の最背面 = 直近に着地したシートの裏面（無ければ開始見開きの左頁）
+                    const leftBaseFn  = spreads[loIdx + landedMax + 1].left;
+                    // 右半分の最背面 = 着地先（hi）の右頁
+                    const rightBaseFn = spreads[hiIdx].right;
+                    const pileTop = (m >= 0)
+                        ? { side: 'right', fn: spreads[loIdx + m].right }
+                        : null;
+                    // PC は左右2山なので昇順 k（最も進んだ k=先頭が最背面）が自然
+                    const curls = [];
+                    for (let k = 0; k < N; k++) {
+                        const t = tk(k);
+                        if (t > 0 && t < 1) curls.push({ t, front: fronts[k], back: backs[k], reverse: false });
+                    }
+                    this.bookRenderer.renderFlutterPC(leftBaseFn, rightBaseFn, pileTop, curls);
                 }
+
+                // 効果音を全体の進行に合わせて数回鳴らす
+                const wantSounds = Math.min(soundCap, 1 + Math.floor((elapsed / total) * soundCap));
+                while (soundsPlayed < wantSounds) { this.audioPlayer.play(); soundsPlayed++; }
+
+                if (elapsed >= total) {
+                    // 完了: 位置を確定し、通常の静止描画に戻す
+                    this.animator.state.isAnimating = false;
+                    this.currentPageIdx = isMobile ? targetIdx : targetIdx * 2;
+                    this.currentSpread  = isMobile ? Math.floor(targetIdx / 2) : targetIdx;
+                    (async () => {
+                        if (!isMobile) await this._preloadCachedImage(this.currentSpread);
+                        this.render();
+                        this.updateUI();
+                        resolve();
+                    })();
+                    return;
+                }
+                requestAnimationFrame(frame);
             };
 
-            step();
+            requestAnimationFrame(frame);
         });
     }
 

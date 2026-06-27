@@ -700,6 +700,7 @@ body.has-mobile-navbar {
 <div class="controls">
     <button class="btn" id="prev-btn">← 前へ</button>
     <button class="btn" id="next-btn">次へ →</button>
+    <button class="btn" id="debug-mode-btn" style="font-size:11px; padding:6px 10px; opacity:0.5; margin-left:20px;">両開き切替</button>
 </div>
 
 <!-- JS（BookController.updateUI）から text() を書き換えてモード別のヒントにする -->
@@ -3827,6 +3828,7 @@ class BookController {
         // PC モードと Mobile モードそれぞれの「現在地」を別々に保持し、
         // モード切り替え時に相互変換して同期させる。
         this.isMobile        = false;
+        this._debugForceMode = null; // デバッグ用: 'mobile' | 'pc' | null
         this.currentSpread   = 0; // PC モードの現在見開きインデックス
         this.currentPageIdx  = 0; // Mobile モードの現在ページインデックス
 
@@ -5135,18 +5137,17 @@ class BookController {
      * @private
      */
     async _handleResize() {
-        if (this.animator.state.isAnimating) return; // アニメーション中は処理しない
+        if (this.animator.state.isAnimating) return;
 
-        const shouldMobile = window.innerWidth < this.C.BREAKPOINT;
+        const shouldMobile = this._debugForceMode
+            ? this._debugForceMode === 'mobile'
+            : window.innerWidth < this.C.BREAKPOINT;
 
         if (shouldMobile !== this.isMobile) {
-            // ── モード自体が切り替わった場合 ──────────────
             await this.applyMode(shouldMobile);
             this.render();
             this.updateUI();
         } else {
-            // ── 同一モードのままウィンドウサイズが変化した場合 ──
-            // Canvas の解像度は変えず、CSS 表示サイズだけ更新する
             const { PC_W, PC_H, MOB_W, MOB_H } = this.C;
             if (this.isMobile) {
                 this._applyCssScale(MOB_W, MOB_H, 20);
@@ -5154,6 +5155,15 @@ class BookController {
                 this._applyCssScale(PC_W, PC_H, 40);
             }
         }
+    }
+
+    _toggleDebugMode() {
+        if (this._debugForceMode === 'pc') {
+            this._debugForceMode = null;
+        } else {
+            this._debugForceMode = this.isMobile ? 'pc' : 'mobile';
+        }
+        this._handleResize();
     }
 }
 
@@ -5244,6 +5254,8 @@ $(document).ready(function () {
     controller.init().catch((err) => {
         console.error('電子ブックの起動に失敗しました:', err);
     });
+
+    $('#debug-mode-btn').on('click', () => controller._toggleDebugMode());
 });
 
 </script>

@@ -811,12 +811,21 @@ class BookController {
                     const pileTopImg = (m >= 0)
                         ? cr.preRenderPage(spreads[loIdx + m].right, true)
                         : null;
-                    // PC は左右2山なので昇順 k（最も進んだ k=先頭が最背面）が自然
+                    // 重なり順（z順）が右ページのめくり描画の肝。
+                    // PC は綴じ目を軸に回転するため、紙が立っている瞬間
+                    // （t=0.5）に最も高く持ち上がる。頂点に近いシートほど
+                    // 物理的に手前にあるので「|t-0.5| が小さいほど後で（上に）
+                    // 描く」= |t-0.5| の降順で重ねる。
+                    // これで右側（持ち上がり中＝より進んだ方が手前）も
+                    // 左側（着地間際＝より進んだ方が奥）も同時に正しくなる。
+                    // （単純な k 昇順だと右側で、まだ寝ているだけの後続ページが
+                    //   めくり上がり中のページを覆い隠してしまっていた）
                     const curls = [];
                     for (let k = 0; k < N; k++) {
                         const t = tk(k);
                         if (t > 0 && t < 1) curls.push({ t, front: fronts[k], back: backs[k], reverse: false });
                     }
+                    curls.sort((a, b) => Math.abs(b.t - 0.5) - Math.abs(a.t - 0.5));
                     this.bookRenderer.renderFlutterPC(leftBaseImg, rightBaseImg, pileTopImg, curls);
                 }
 

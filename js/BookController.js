@@ -788,9 +788,10 @@ class BookController {
                 for (let k = 0; k < N; k++) { if (tk(k) <= 0) { m = k; break; } }
 
                 if (isMobile) {
-                    // 最背面 = 直近に現れたページ（無ければ開始ページ lo）
-                    const baseIdx = loIdx + landedMax + 1; // landedMax=-1 → lo
-                    const basePage = cr.preRenderPage(cr.pages[baseIdx].fn, cr.pages[baseIdx].isRight);
+                    // 最背面 = スタックの一番下＝着地先ページ（常に hi）。
+                    // landedMax を使うと終盤で奥のページが手前のものに化け、
+                    // 連続めくりの「下から現れる絵」が崩れるため hi で固定する。
+                    const basePage = cr.preRenderPage(cr.pages[hiIdx].fn, cr.pages[hiIdx].isRight);
                     const pileTop  = (m >= 0)
                         ? cr.preRenderPage(cr.pages[loIdx + m].fn, cr.pages[loIdx + m].isRight)
                         : null;
@@ -804,11 +805,11 @@ class BookController {
                 } else {
                     const spreads = cr.spreads;
                     // 左半分の最背面 = 直近に着地したシートの裏面（無ければ開始見開きの左頁）
-                    const leftBaseFn  = spreads[loIdx + landedMax + 1].left;
-                    // 右半分の最背面 = 着地先（hi）の右頁
-                    const rightBaseFn = spreads[hiIdx].right;
-                    const pileTop = (m >= 0)
-                        ? { side: 'right', fn: spreads[loIdx + m].right }
+                    const leftBaseImg  = cr.preRenderPage(spreads[loIdx + landedMax + 1].left, false);
+                    // 右半分の最背面 = 着地先（hi）の右頁（右の山の一番下）
+                    const rightBaseImg = cr.preRenderPage(spreads[hiIdx].right, true);
+                    const pileTopImg = (m >= 0)
+                        ? cr.preRenderPage(spreads[loIdx + m].right, true)
                         : null;
                     // PC は左右2山なので昇順 k（最も進んだ k=先頭が最背面）が自然
                     const curls = [];
@@ -816,7 +817,7 @@ class BookController {
                         const t = tk(k);
                         if (t > 0 && t < 1) curls.push({ t, front: fronts[k], back: backs[k], reverse: false });
                     }
-                    this.bookRenderer.renderFlutterPC(leftBaseFn, rightBaseFn, pileTop, curls);
+                    this.bookRenderer.renderFlutterPC(leftBaseImg, rightBaseImg, pileTopImg, curls);
                 }
 
                 // 効果音を全体の進行に合わせて数回鳴らす

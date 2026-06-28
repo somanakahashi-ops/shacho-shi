@@ -374,56 +374,40 @@ class BookRenderer {
      * 飛行中シートを下から順に重ね描きする点が異なる。呼び出し側
      * （BookController._runFlutter）が各フレームで以下を組み立てて渡す:
      *
-     *   leftBaseFn  : 左半分の最背面（直近に着地したシートの裏面、
-     *                 まだ何も着地していなければ開始見開きの左ページ）
-     *   rightBaseFn : 右半分の最背面（右の山の一番下＝着地先の右ページ）
-     *   pileTop     : まだめくられていない山の最上面 { side, fn }（無ければ null）
-     *   curls       : 飛行中シートの配列 [{ t, front, back, reverse }]
-     *                 配列の順に重ね描きするので、呼び出し側で z 順を決める。
+     *   leftBaseImg  : 左半分の最背面（直近に着地したシートの裏面、
+     *                  まだ何も着地していなければ開始見開きの左ページ）
+     *   rightBaseImg : 右半分の最背面（右の山の一番下＝着地先の右ページ）
+     *   pileTopImg   : まだめくられていない山の最上面（右側、無ければ null）
+     *   curls        : 飛行中シートの配列 [{ t, front, back, reverse }]
+     *                  配列の順に重ね描きするので、呼び出し側で z 順を決める。
      *
-     * @param {Function} leftBaseFn
-     * @param {Function} rightBaseFn
-     * @param {{side:'left'|'right', fn:Function}|null} pileTop
+     * 性能対策:
+     *   土台ページは preRenderPage 済みの Canvas（drawImage）で渡すため、
+     *   毎フレームの文字描画（fillText 等）が発生しない。
+     *   飛行中シートのカールは FLUTTER_PC_SLICES の粗い分割で描き、
+     *   同時枚数が増える中盤でもコマ落ちしにくくする。
+     *
+     * @param {HTMLCanvasElement} leftBaseImg  - 左半分(x=0..PAGE_W)に貼る
+     * @param {HTMLCanvasElement} rightBaseImg - 右半分(x=SPINE_X..)に貼る
+     * @param {HTMLCanvasElement|null} pileTopImg - 右半分に貼る（無ければ null）
      * @param {Array<{t:number, front:HTMLCanvasElement, back:HTMLCanvasElement, reverse:boolean}>} curls
      */
-    renderFlutterPC(leftBaseFn, rightBaseFn, pileTop, curls) {
-        const { PC_W, PC_H, PAGE_W, SPINE_X } = this.C;
+    renderFlutterPC(leftBaseImg, rightBaseImg, pileTopImg, curls) {
+        const { PC_W, PC_H, SPINE_X, FLUTTER_PC_SLICES } = this.C;
         const ctx = this.ctx;
 
         ctx.clearRect(0, 0, PC_W, PC_H);
         ctx.save();
         ctx.clip(this._pcClipPath);
 
-        // 左半分の最背面
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, SPINE_X, PC_H);
-        ctx.clip();
-        leftBaseFn(ctx);
-        ctx.restore();
+        // 土台（事前レンダリング済み Canvas を貼るだけ＝文字描画なし）
+        ctx.drawImage(leftBaseImg, 0, 0);          // 左半分
+        ctx.drawImage(rightBaseImg, SPINE_X, 0);   // 右半分
+        if (pileTopImg) ctx.drawImage(pileTopImg, SPINE_X, 0); // 山の最上面（右）
 
-        // 右半分の最背面
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(SPINE_X, 0, PAGE_W, PC_H);
-        ctx.clip();
-        rightBaseFn(ctx);
-        ctx.restore();
-
-        // まだめくられていない山の最上面（次にめくられる面）
-        if (pileTop) {
-            ctx.save();
-            ctx.beginPath();
-            if (pileTop.side === 'right') ctx.rect(SPINE_X, 0, PAGE_W, PC_H);
-            else                          ctx.rect(0, 0, SPINE_X, PC_H);
-            ctx.clip();
-            pileTop.fn(ctx);
-            ctx.restore();
-        }
-
-        // 飛行中のシートを順に重ねる
+        // 飛行中のシートを順に重ねる（粗い分割で軽量化）
         for (const c of curls) {
-            this.flipEffect.drawPCCurl(c.t, c.front, c.back, c.reverse);
+            this.flipEffect.drawPCCurl(c.t, c.front, c.back, c.reverse, FLUTTER_PC_SLICES);
         }
 
         this.drawSpine();
@@ -433,7 +417,7 @@ class BookRenderer {
     /**
      * パラパラめくりの 1 フレームを Mobile（1ページ）モードで描画する。
      *
-     *   basePage    : 最背面（直近に現れたページ、無ければ開始ページ）
+     *   basePage    : 最背面（スタックの一番下＝着地先ページ）
      *   pileTopPage : まだめくられていない山の最上面（無ければ null）
      *   curls       : 飛行中シートの配列 [{ t, front }]
      *                 配列の順に重ね描き（奥→手前）。
@@ -443,7 +427,7 @@ class BookRenderer {
      * @param {Array<{t:number, front:HTMLCanvasElement}>} curls
      */
     renderFlutterMobile(basePage, pileTopPage, curls) {
-        const { MOB_W, MOB_H } = this.C;
+        const { MOB_W, MOB_H, FLUTTER_MOBILE_SLICES } = this.C;
         const ctx = this.ctx;
 
         ctx.clearRect(0, 0, MOB_W, MOB_H);
@@ -454,7 +438,7 @@ class BookRenderer {
         if (pileTopPage) ctx.drawImage(pileTopPage, 0, 0);
 
         for (const c of curls) {
-            this.flipEffect.drawMobileCurl(c.t, c.front);
+            this.flipEffect.drawMobileCurl(c.t, c.front, FLUTTER_MOBILE_SLICES);
         }
 
         ctx.restore();

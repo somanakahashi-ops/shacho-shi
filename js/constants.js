@@ -110,7 +110,7 @@ const BOOK_CONST = {
      *    遠くへ飛ぶ（枚数が多い）ときに全体が長くなりすぎないよう、
      *    総時間の上限。超える場合は1枚あたりとずらし幅を比例縮小する。
      * ──────────────────────────────────────────────────────── */
-    FLUTTER_SHEET_MS:   560,
-    FLUTTER_STAGGER_MS: 160,
-    FLUTTER_MAX_MS:     2000
+    FLUTTER_SHEET_MS:   780,
+    FLUTTER_STAGGER_MS: 224,
+    FLUTTER_MAX_MS:     2800
 };

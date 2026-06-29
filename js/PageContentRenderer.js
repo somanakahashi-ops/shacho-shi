@@ -214,8 +214,8 @@ class PageContentRenderer {
      */
     _buildSpreads(bookData) {
         return bookData.spreads.map(s => ({
-            left:  (ctx) => this.drawPage(ctx, 'left',  s.left.bg,  s.left.chapter,  s.left.title,  s.left.body,  s.left.pageNum,  this._bgImageCache.get(s.left.bgImage),  s.left.dateLabel,  this._bgImageCache.get(s.left.signatureImage)),
-            right: (ctx) => this.drawPage(ctx, 'right', s.right.bg, s.right.chapter, s.right.title, s.right.body, s.right.pageNum, this._bgImageCache.get(s.right.bgImage), s.right.dateLabel, this._bgImageCache.get(s.right.signatureImage))
+            left:  (ctx) => this.drawPage(ctx, 'left',  s.left),
+            right: (ctx) => this.drawPage(ctx, 'right', s.right)
         }));
     }
 
@@ -290,9 +290,16 @@ class PageContentRenderer {
      *        小さく配置する署名・落款の画像（読み込み済みの Image）。
      *        bgImage と同じキャッシュ機構（_bgImageCache）を共有する。
      */
-    drawPage(c, side, bg, chapter, title, body, pageNum, bgImage, dateLabel, signatureImage) {
+    drawPage(c, side, page) {
         const { PAGE_W, PC_H } = this.C;
         const ox = (side === 'right') ? PAGE_W : 0;
+
+        // ページデータ（オブジェクト）から各項目を取り出す。
+        // 画像系（bgImage / signatureImage）はデータURL文字列をキーに
+        // 読み込み済み Image をキャッシュから引く（未読込なら undefined）。
+        const { bg, chapter, title, body, pageNum, dateLabel, qLabel, question, answer } = page;
+        const bgImage        = this._bgImageCache.get(page.bgImage);
+        const signatureImage = this._bgImageCache.get(page.signatureImage);
 
         // ── 1. 背景 ────────────────────────────────────────
         if (bgImage) {
@@ -338,8 +345,16 @@ class PageContentRenderer {
         c.textAlign    = 'center';
         c.textBaseline = 'middle';
 
+        // ── Q&A ページかどうか ──────────────────────────────
+        // question / answer を持つページは、章・タイトル・本文の
+        // 代わりに専用の Q&A レイアウト（_drawQA）で描く。
+        const isQA = !!(answer || question);
+        if (isQA) {
+            this._drawQA(c, ox, qLabel, question, answer);
+        }
+
         // ── 3. 章ラベル ─────────────────────────────────────
-        if (chapter) {
+        if (!isQA && chapter) {
             c.font      = 'italic 17px Georgia, serif';
             c.fillStyle = '#c9a961'; // ゴールド色
             c.fillText(chapter, cx, cy - 125); // タイトルより上に配置
@@ -349,7 +364,7 @@ class PageContentRenderer {
         // 8 文字超のタイトルは自動的に小さいフォントに切り替える。
         // 「社長の自分史」（7 文字）は大タイトル、
         // 「事業の成長と課題」（9 文字）は小タイトルになる。
-        if (title) {
+        if (!isQA && title) {
             const lines  = title.split('\n');
             const isLong = title.length > 8;
             c.fillStyle  = isLong ? '#c9a961' : '#2a2020';
@@ -363,7 +378,7 @@ class PageContentRenderer {
         // ── 5. 金色の区切り線 ───────────────────────────────
         // 章またはタイトルがある場合のみ描画する。
         // 中央が不透明、端が透明なグラデーションで「光るライン」を表現。
-        if (chapter || title) {
+        if (!isQA && (chapter || title)) {
             const gl = c.createLinearGradient(cx - 65, 0, cx + 65, 0);
             gl.addColorStop(0,   'rgba(201,169,97,0)');    // 左端: 透明
             gl.addColorStop(0.5, 'rgba(201,169,97,0.92)'); // 中央: ゴールド
@@ -377,7 +392,7 @@ class PageContentRenderer {
         }
 
         // ── 6. 本文 ────────────────────────────────────────
-        if (body) {
+        if (!isQA && body) {
             c.font      = '17px Georgia, serif';
             c.fillStyle = '#484040';
             const lines  = body.split('\n');
@@ -429,6 +444,112 @@ class PageContentRenderer {
             c.drawImage(signatureImage, sigX, sigY, sigW, sigH);
             c.restore();
         }
+    }
+
+    /**
+     * Q&A 形式（質問と回答）のページ本文を描く。
+     *
+     * レイアウト（上から）:
+     *   ・「Q1」などの質問番号ラベル（ゴールド）
+     *   ・質問文（やや小さめ・落ち着いた色・イタリック）
+     *   ・金色の区切り線
+     *   ・回答文（読みやすい本文サイズ）
+     *
+     * 長文でもページ幅に収まるよう、measureText で自動折り返しする
+     * （book-data 側で手動改行を入れる必要がない）。全体は文字エリアの
+     * 上寄りに配置し、下部（写真エリア）には掛からないようにする。
+     *
+     * @param {CanvasRenderingContext2D} c
+     * @param {number} ox - ページ左端の X（left=0 / right=PAGE_W）
+     * @param {string|null} qLabel  - "Q1" などの番号ラベル
+     * @param {string|null} question - 質問文
+     * @param {string|null} answer   - 回答文
+     * @private
+     */
+    _drawQA(c, ox, qLabel, question, answer) {
+        const { PAGE_W } = this.C;
+        const cx       = ox + PAGE_W / 2;
+        const maxWidth = PAGE_W - 96; // 左右余白 48px ずつ
+        c.textAlign    = 'center';
+        c.textBaseline = 'middle';
+
+        let y = 84; // 文字エリア上端
+
+        // 質問番号ラベル
+        if (qLabel) {
+            c.font      = 'italic 16px Georgia, serif';
+            c.fillStyle = '#c9a961';
+            c.fillText(qLabel, cx, y);
+            y += 30;
+        }
+
+        // 質問文（落ち着いた色のイタリック）
+        if (question) {
+            c.font      = 'italic 16px Georgia, serif';
+            c.fillStyle = '#6b5a42';
+            const lineH = 26;
+            this._wrapText(c, question, maxWidth).forEach((ln) => {
+                c.fillText(ln, cx, y); y += lineH;
+            });
+        }
+
+        // 金色の区切り線
+        if (question && answer) {
+            y += 6;
+            const gl = c.createLinearGradient(cx - 55, 0, cx + 55, 0);
+            gl.addColorStop(0,   'rgba(201,169,97,0)');
+            gl.addColorStop(0.5, 'rgba(201,169,97,0.85)');
+            gl.addColorStop(1,   'rgba(201,169,97,0)');
+            c.strokeStyle = gl;
+            c.lineWidth   = 1.2;
+            c.beginPath();
+            c.moveTo(cx - 55, y);
+            c.lineTo(cx + 55, y);
+            c.stroke();
+            y += 24;
+        }
+
+        // 回答文（本文）
+        if (answer) {
+            c.font      = '15.5px Georgia, serif';
+            c.fillStyle = '#403838';
+            const lineH = 27;
+            this._wrapText(c, answer, maxWidth).forEach((ln) => {
+                c.fillText(ln, cx, y); y += lineH;
+            });
+        }
+    }
+
+    /**
+     * テキストを指定幅に収まるよう自動で折り返し、行の配列を返す。
+     * 日本語のように空白で区切れない文章にも対応するため、1文字ずつ
+     * measureText で幅を測りながら詰めていく。元の改行（\n）は尊重する。
+     *
+     * 呼び出す前に c.font を設定しておくこと（measureText がそのフォントで
+     * 計測するため）。
+     *
+     * @param {CanvasRenderingContext2D} c
+     * @param {string} text
+     * @param {number} maxWidth
+     * @returns {string[]} 折り返し後の行
+     * @private
+     */
+    _wrapText(c, text, maxWidth) {
+        const out = [];
+        String(text).split('\n').forEach((para) => {
+            let line = '';
+            for (const ch of para) {
+                const test = line + ch;
+                if (line && c.measureText(test).width > maxWidth) {
+                    out.push(line);
+                    line = ch;
+                } else {
+                    line = test;
+                }
+            }
+            out.push(line);
+        });
+        return out;
     }
 
     /**

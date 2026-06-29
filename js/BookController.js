@@ -211,7 +211,14 @@ class BookController {
     render() {
         const animState = this.animator.state;
         if (this.isMobile) {
-            this.bookRenderer.renderMobile(animState, this.contentRenderer.pages, this.currentPageIdx);
+            // 画像は見開きの「左ページ」に紐づく。モバイルでは1ページずつ表示
+            // するため、左ページ（＝偶数ページ）を表示しているときだけ、その
+            // 見開きの画像を重ねる。currentPageIdx が偶数 → 左ページ。
+            const isLeftPage = (this.currentPageIdx % 2 === 0);
+            const pageImage = isLeftPage
+                ? (this._imageCache.get(this.currentPageIdx / 2) ?? null)
+                : null;
+            this.bookRenderer.renderMobile(animState, this.contentRenderer.pages, this.currentPageIdx, pageImage);
         } else {
             // 現在の見開きに紐づく画像（あれば）をキャッシュから取り出して渡す。
             // キャッシュに無ければ undefined ではなく null を渡すよう Map.get の
@@ -335,9 +342,14 @@ class BookController {
      * @param {number} finishedIdx - 到達したページインデックス
      * @private
      */
-    _onMobileFlipComplete(finishedIdx) {
+    async _onMobileFlipComplete(finishedIdx) {
         this.currentPageIdx = finishedIdx;
         this.currentSpread  = Math.floor(finishedIdx / 2); // PC の位置も同期
+        // 左ページに到達したら、その見開きの画像を先読みしてから描く
+        // （PC と同じ _imageCache・見開き番号を共有している）。
+        if (this.currentPageIdx % 2 === 0) {
+            await this._preloadCachedImage(this.currentSpread);
+        }
         this.render();
         this.updateUI();
     }
@@ -433,6 +445,8 @@ class BookController {
             canvas.height = MOB_H;
             this._applyCssScale(MOB_W, MOB_H, 20); // 左右 10px ずつのマージン想定
             if (modeChanged) this.currentPageIdx = this.currentSpread * 2;
+            // モバイルでも現在見開きの画像を先読みしておく（左ページで表示する）
+            if (modeChanged) await this._preloadCachedImage(this.currentSpread);
         } else {
             canvas.width  = PC_W;
             canvas.height = PC_H;
@@ -690,6 +704,7 @@ class BookController {
             } else {
                 this.currentPageIdx = pageIndex;
                 this.currentSpread  = spreadIndex;
+                if (this.currentPageIdx % 2 === 0) await this._preloadCachedImage(this.currentSpread);
                 this.render();
                 this.updateUI();
             }
@@ -856,7 +871,10 @@ class BookController {
                     this.currentPageIdx = isMobile ? targetIdx : targetIdx * 2;
                     this.currentSpread  = isMobile ? Math.floor(targetIdx / 2) : targetIdx;
                     (async () => {
-                        if (!isMobile) await this._preloadCachedImage(this.currentSpread);
+                        // 左ページ（PCは常に、モバイルは偶数ページ）に到達したら画像を先読み
+                        if (!isMobile || this.currentPageIdx % 2 === 0) {
+                            await this._preloadCachedImage(this.currentSpread);
+                        }
                         this.render();
                         this.updateUI();
                         resolve();

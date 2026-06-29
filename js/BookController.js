@@ -664,7 +664,7 @@ class BookController {
         // （パラパラめくりの様子を隠さず見せるため）
         this._closeToc();
 
-        const FLUTTER_THRESHOLD = 2; // これ以上ページ/見開きが離れていたらパラパラめくりにする
+        const FLUTTER_THRESHOLD = this.C.FLUTTER_THRESHOLD; // これ以上ページ/見開きが離れていたらパラパラめくりにする
 
         if (this.isMobile) {
             const distance = Math.abs(pageIndex - this.currentPageIdx);
@@ -1352,7 +1352,7 @@ class BookController {
             // データURLから Image オブジェクトを作りキャッシュに登録する。
             // ここで再度ファイルを読み直すのではなく、prepareImage が返した
             // データURLをそのまま使うことで二重読み込みを避けている。
-            const img = await this._dataUrlToImage(dataUrl);
+            const img = await loadImageFromSrc(dataUrl);
             console.log('[drop] Image読込完了, width=', img.width, 'height=', img.height);
 
             this._imageCache.set(this.currentSpread, img);
@@ -1362,7 +1362,7 @@ class BookController {
             console.log('[drop] render() 呼び出し完了');
 
         } catch (err) {
-            // prepareImage / _dataUrlToImage 等で例外が起きた場合、
+            // prepareImage / loadImage 等で例外が起きた場合、
             // async 関数のため何もしないと静かに失敗してしまう。
             // 必ずコンソールに出して原因を追えるようにする。
             console.error('[drop] 画像ドロップ処理中にエラーが発生しました:', err);
@@ -1428,21 +1428,6 @@ class BookController {
         if (this._imageCache.has(spreadIndex)) return;
         const img = await this.imageStore.loadImage(spreadIndex);
         if (img) this._imageCache.set(spreadIndex, img);
-    }
-
-    /**
-     * データURL文字列から Image オブジェクトを生成する
-     * @param {string} dataUrl
-     * @returns {Promise<HTMLImageElement>}
-     * @private
-     */
-    _dataUrlToImage(dataUrl) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload  = () => resolve(img);
-            img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-            img.src = dataUrl;
-        });
     }
 
     /**

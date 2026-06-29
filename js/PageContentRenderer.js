@@ -141,24 +141,17 @@ class PageContentRenderer {
         //   時間がかかってしまうが、Promise.all でまとめて並行に
         //   読み込むことで、全体の待ち時間を最も遅い1枚の分だけに
         //   抑えられる。
-        const loadPromises = Array.from(urls).map(url => {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                    this._bgImageCache.set(url, img);
-                    resolve();
-                };
-                img.onerror = () => {
-                    // 1枚の読み込み失敗で全体を止めないよう、
-                    // 警告だけ出してこの画像は「キャッシュに入らない」
-                    // 状態のまま resolve する（drawPage 側は
-                    // キャッシュに無ければ単色背景にフォールバックする）。
+        const loadPromises = Array.from(urls).map(url =>
+            // 共通ヘルパ loadImageFromSrc で読み込む。
+            // 1枚の読み込み失敗で全体を止めないよう、catch で握りつぶして
+            // 「キャッシュに入らない」状態のまま続行する
+            // （drawPage 側はキャッシュに無ければ単色背景にフォールバックする）。
+            loadImageFromSrc(url)
+                .then(img => { this._bgImageCache.set(url, img); })
+                .catch(() => {
                     console.warn('[背景画像] 読み込みに失敗しました:', url.substring(0, 50) + '...');
-                    resolve();
-                };
-                img.src = url;
-            });
-        });
+                })
+        );
 
         await Promise.all(loadPromises);
     }

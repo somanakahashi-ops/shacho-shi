@@ -43,13 +43,14 @@ class BookController {
      * @param {HTMLCanvasElement} canvas
      * @param {Object} ui - { pageCounter, prevBtn, nextBtn, hintText, dropZone } の jQuery 要素
      */
-    constructor(constants, contentRenderer, bookRenderer, animator, imageStore, bookmarkStore, audioPlayer, pdfExporter, canvas, ui) {
+    constructor(constants, contentRenderer, bookRenderer, animator, imageStore, bookmarkStore, settingsStore, audioPlayer, pdfExporter, canvas, ui) {
         this.C               = constants;
         this.contentRenderer = contentRenderer;
         this.bookRenderer     = bookRenderer;
         this.animator         = animator;
         this.imageStore        = imageStore;
         this.bookmarkStore      = bookmarkStore;
+        this.settingsStore       = settingsStore;
         this.audioPlayer         = audioPlayer;
         this.pdfExporter          = pdfExporter;
         this.canvas           = canvas;
@@ -664,7 +665,7 @@ class BookController {
         // （パラパラめくりの様子を隠さず見せるため）
         this._closeToc();
 
-        const FLUTTER_THRESHOLD = 2; // これ以上ページ/見開きが離れていたらパラパラめくりにする
+        const FLUTTER_THRESHOLD = this.C.FLUTTER_THRESHOLD; // これ以上ページ/見開きが離れていたらパラパラめくりにする
 
         if (this.isMobile) {
             const distance = Math.abs(pageIndex - this.currentPageIdx);
@@ -929,11 +930,7 @@ class BookController {
         // ページめくり音 ON/OFF トグル
         this.ui.soundToggle.on('change', (e) => {
             this.audioPlayer.setEnabled(e.target.checked);
-            try {
-                localStorage.setItem('ebook-sound-enabled', e.target.checked ? '1' : '0');
-            } catch (err) {
-                console.warn('音設定の保存に失敗しました:', err);
-            }
+            this.settingsStore.setSoundEnabled(e.target.checked);
         });
 
         // 自動ページ送り（スライドショー）の開始/停止ボタン
@@ -948,13 +945,7 @@ class BookController {
      * @private
      */
     _restoreSoundSetting() {
-        let enabled = true;
-        try {
-            const saved = localStorage.getItem('ebook-sound-enabled');
-            if (saved !== null) enabled = (saved === '1');
-        } catch (e) {
-            console.warn('音設定の読込に失敗しました:', e);
-        }
+        const enabled = this.settingsStore.getSoundEnabled();
         this.audioPlayer.setEnabled(enabled);
         this.ui.soundToggle.prop('checked', enabled);
     }
@@ -1352,7 +1343,7 @@ class BookController {
             // データURLから Image オブジェクトを作りキャッシュに登録する。
             // ここで再度ファイルを読み直すのではなく、prepareImage が返した
             // データURLをそのまま使うことで二重読み込みを避けている。
-            const img = await this._dataUrlToImage(dataUrl);
+            const img = await loadImageFromSrc(dataUrl);
             console.log('[drop] Image読込完了, width=', img.width, 'height=', img.height);
 
             this._imageCache.set(this.currentSpread, img);
@@ -1362,7 +1353,7 @@ class BookController {
             console.log('[drop] render() 呼び出し完了');
 
         } catch (err) {
-            // prepareImage / _dataUrlToImage 等で例外が起きた場合、
+            // prepareImage / loadImage 等で例外が起きた場合、
             // async 関数のため何もしないと静かに失敗してしまう。
             // 必ずコンソールに出して原因を追えるようにする。
             console.error('[drop] 画像ドロップ処理中にエラーが発生しました:', err);
@@ -1428,21 +1419,6 @@ class BookController {
         if (this._imageCache.has(spreadIndex)) return;
         const img = await this.imageStore.loadImage(spreadIndex);
         if (img) this._imageCache.set(spreadIndex, img);
-    }
-
-    /**
-     * データURL文字列から Image オブジェクトを生成する
-     * @param {string} dataUrl
-     * @returns {Promise<HTMLImageElement>}
-     * @private
-     */
-    _dataUrlToImage(dataUrl) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload  = () => resolve(img);
-            img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-            img.src = dataUrl;
-        });
     }
 
     /**

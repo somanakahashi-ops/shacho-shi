@@ -167,6 +167,15 @@ body.has-mobile-navbar {
     color: #aaa;
 }
 
+/* デバッグ用の「両開き切替」ボタン（控えめな見た目で常設）。
+   通常ボタンより小さく薄く表示し、本来のナビ操作と区別する。 */
+.btn-debug {
+    font-size: 11px;
+    padding: 6px 10px;
+    opacity: 0.5;
+    margin-left: 20px;
+}
+
 /* 操作ヒントテキスト（PC/Mobile モードで文言が変わる） */
 .hint {
     margin-top: 14px;

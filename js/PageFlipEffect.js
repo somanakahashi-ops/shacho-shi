@@ -48,12 +48,6 @@ class PageFlipEffect {
     static DEBUG = false;
 
     /**
-     * drawMobileCurl の診断ログを1回だけ出すためのフラグ。
-     * （連投を防ぐための一時的なデバッグ用フラグ）
-     */
-    static _mobileDebugLogged = false;
-
-    /**
      * @param {CanvasRenderingContext2D} ctx - 描画先コンテキスト
      * @param {Object} constants - constants.js の BOOK_CONST
      */

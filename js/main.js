@@ -62,7 +62,8 @@ $(document).ready(function () {
     const animator           = new BookAnimator(BOOK_CONST, contentRenderer);
     const imageStore          = new ImageStore();
     const bookmarkStore        = new BookmarkStore();
-    const audioPlayer           = new AudioPlayer(PAGE_FLIP_SOUND_DATA_URL);
+    const settingsStore         = new SettingsStore();
+    const audioPlayer            = new AudioPlayer(PAGE_FLIP_SOUND_DATA_URL);
     const pdfExporter             = new PdfExporter(contentRenderer, BOOK_CONST);
 
     const controller = new BookController(
@@ -72,6 +73,7 @@ $(document).ready(function () {
         animator,
         imageStore,
         bookmarkStore,
+        settingsStore,
         audioPlayer,
         pdfExporter,
         canvas,

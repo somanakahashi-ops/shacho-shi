@@ -49,7 +49,7 @@ class BookRenderer {
         // 再利用する（PC_W等は BOOK_CONST の固定値で、モード切替で
         // 変わるのは canvas.width/height という「解像度」だけであり、
         // この2つの形そのものは常に同じであるため、作り直す必要がない）。
-        const { PC_W, PC_H, MOB_W, MOB_H, SPINE_X } = this.C;
+        const { PC_W, PC_H, MOB_W, MOB_H, SPINE_X, SPINE_SHADOW_W } = this.C;
         this._pcClipPath     = this._buildRoundRectPath(0, 0, PC_W, PC_H, [4, 8, 8, 4]);
         this._mobileClipPath = this._buildRoundRectPath(0, 0, MOB_W, MOB_H, 10);
 
@@ -59,8 +59,8 @@ class BookRenderer {
         // 内容は毎回まったく同じになる。1度だけ作って再利用すれば、
         // 毎フレームの createLinearGradient + addColorStop 呼び出し
         // （計6回）を省略できる。
-        this._spineGradLeft  = this._buildSpineGradient(SPINE_X - 22, SPINE_X, 'left');
-        this._spineGradRight = this._buildSpineGradient(SPINE_X, SPINE_X + 22, 'right');
+        this._spineGradLeft  = this._buildSpineGradient(SPINE_X - SPINE_SHADOW_W, SPINE_X, 'left');
+        this._spineGradRight = this._buildSpineGradient(SPINE_X, SPINE_X + SPINE_SHADOW_W, 'right');
     }
 
     /**
@@ -110,43 +110,6 @@ class BookRenderer {
     }
 
     /**
-     * 角丸矩形パスを作成する（Canvas 2D の roundRect 互換実装）
-     *
-     * ctx.roundRect() は古いブラウザでサポートされないため、
-     * arcTo() を使った互換実装を用意している。
-     * この関数を呼んだ後に clip() すると角丸クリップが適用される。
-     *
-     * 注記（パフォーマンス最適化後の現状）:
-     *   PC モード・Mobile モードの角丸クリップは、現在は
-     *   constructor で1度だけ構築した Path2D（_pcClipPath /
-     *   _mobileClipPath）を再利用する方式に切り替えたため、
-     *   このメソッド自体は renderPC()/renderMobile() からは
-     *   呼ばれなくなった。形が固定でない角丸矩形クリップが
-     *   将来必要になった場合のための参考実装として残している。
-     *
-     * @param {number} x - 左上 X
-     * @param {number} y - 左上 Y
-     * @param {number} w - 幅
-     * @param {number} h - 高さ
-     * @param {number|number[]} r - 角丸半径。配列なら [左上,右上,右下,左下]
-     */
-    roundRect(x, y, w, h, r) {
-        const ctx = this.ctx;
-        const [tl, tr, br, bl] = Array.isArray(r) ? r : [r, r, r, r];
-        ctx.beginPath();
-        ctx.moveTo(x + tl, y);
-        ctx.lineTo(x + w - tr, y);
-        ctx.arcTo(x + w, y,     x + w, y + tr,     tr);
-        ctx.lineTo(x + w, y + h - br);
-        ctx.arcTo(x + w, y + h, x + w - br, y + h, br);
-        ctx.lineTo(x + bl, y + h);
-        ctx.arcTo(x, y + h,     x, y + h - bl,     bl);
-        ctx.lineTo(x, y + tl);
-        ctx.arcTo(x, y,         x + tl, y,         tl);
-        ctx.closePath();
-    }
-
-    /**
      * 綴じ目（本の背表紙側）を描画する（PC 専用）
      *
      * 本の見開き中央に立体感を与えるため、以下を重ねて描く:
@@ -158,14 +121,14 @@ class BookRenderer {
      * アニメーション中も綴じ目が見えることで本らしさが保たれる。
      */
     drawSpine() {
-        const { PC_H, SPINE_X } = this.C;
+        const { PC_H, SPINE_X, SPINE_SHADOW_W } = this.C;
         const ctx = this.ctx;
 
         ctx.fillStyle = this._spineGradLeft;
-        ctx.fillRect(SPINE_X - 22, 0, 22, PC_H);
+        ctx.fillRect(SPINE_X - SPINE_SHADOW_W, 0, SPINE_SHADOW_W, PC_H);
 
         ctx.fillStyle = this._spineGradRight;
-        ctx.fillRect(SPINE_X, 0, 22, PC_H);
+        ctx.fillRect(SPINE_X, 0, SPINE_SHADOW_W, PC_H);
     }
 
     /**
@@ -275,7 +238,7 @@ class BookRenderer {
             // モバイルよりも小さいが、マウスドラッグでも同様に
             // 「指を離した後の仕上げアニメーションでは元の滑らかさに
             // 戻る」という操作感の一貫性を保てる）。
-            const pcSliceOverride = animState.dragging ? 30 : undefined;
+            const pcSliceOverride = animState.dragging ? this.C.DRAG_PC_SLICES : undefined;
             this.flipEffect.drawPCCurl(animState.progress, animState.offFront, animState.offBack, animState.reverse, pcSliceOverride);
         }
 
@@ -359,7 +322,7 @@ class BookRenderer {
             // 指を離した後の確定/キャンセルの自動補完アニメーション
             // （isAnimating=true, dragging=false の状態）は touchmove の
             // 頻度に縛られないので、通常の滑らかさ（150）に戻す。
-            const sliceOverride = animState.dragging ? 60 : undefined;
+            const sliceOverride = animState.dragging ? this.C.DRAG_MOBILE_SLICES : undefined;
             this.flipEffect.drawMobileCurl(animState.progress, animState.offFront, sliceOverride);
         }
 

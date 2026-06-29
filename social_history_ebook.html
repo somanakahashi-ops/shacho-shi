@@ -106,7 +106,7 @@
 <div class="controls">
     <button class="btn" id="prev-btn">← 前へ</button>
     <button class="btn" id="next-btn">次へ →</button>
-    <button class="btn" id="debug-mode-btn" style="font-size:11px; padding:6px 10px; opacity:0.5; margin-left:20px;">両開き切替</button>
+    <button class="btn btn-debug" id="debug-mode-btn">両開き切替</button>
 </div>
 
 <!-- JS（BookController.updateUI）から text() を書き換えてモード別のヒントにする -->
@@ -118,6 +118,7 @@
      ES モジュールではなくクラシックな script タグを使うことで、
      サーバー経由でもローカルのダブルクリック(file://)でも確実に動く。
      ================================================================ -->
+    <script src="js/util.js"></script>
     <script src="js/constants.js"></script>
     <script src="js/sound-data.js"></script>
     <script src="data/book-data.js"></script>
@@ -127,6 +128,7 @@
     <script src="js/BookAnimator.js"></script>
     <script src="js/ImageStore.js"></script>
     <script src="js/BookmarkStore.js"></script>
+    <script src="js/SettingsStore.js"></script>
     <script src="js/AudioPlayer.js"></script>
     <script src="js/PdfExporter.js"></script>
     <script src="js/BookController.js"></script>

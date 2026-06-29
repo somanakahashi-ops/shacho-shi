@@ -66,11 +66,6 @@ class BookAnimator {
      * @param {Function} onFrame        - 各フレームで呼ぶコールバック（描画担当）
      * @param {Function} onComplete     - 完了時に呼ぶコールバック（状態確定担当）
      * @param {boolean}  [reverse=false] - true なら「前へ」方向の逆再生
-     * @param {number}   [durationMs] - 1回のめくりにかける時間（ミリ秒）。
-     *                                   省略時は通常の FLIP_MS を使う。
-     *                                   パラパラめくり機能（複数ページの
-     *                                   一括移動）から、短い FLUTTER_MS を
-     *                                   指定して呼ばれることがある。
      *
      * reverse の意味:
      *   false（次へ）: 現在の右ページが表面、移動先の左ページが裏面。
@@ -81,7 +76,7 @@ class BookAnimator {
      *                   ヒンジを綴じ目に固定したまま開始角度・終了角度を
      *                   入れ替えて描画する。
      */
-    startFlipPC(spreads, currentSpread, toIdx, onFrame, onComplete, reverse = false, durationMs) {
+    startFlipPC(spreads, currentSpread, toIdx, onFrame, onComplete, reverse = false) {
         if (this.state.isAnimating) return;
         if (toIdx < 0 || toIdx >= spreads.length || toIdx === currentSpread) return;
 
@@ -101,7 +96,7 @@ class BookAnimator {
         this._runLoop(onFrame, () => {
             this._resetState();
             onComplete(toIdx);
-        }, reverse, durationMs);
+        }, reverse);
     }
 
     /**
@@ -118,8 +113,6 @@ class BookAnimator {
      * @param {Function} onFrame        - 各フレームで呼ぶコールバック
      * @param {Function} onComplete     - 完了時に呼ぶコールバック
      * @param {boolean}  [reverse=false] - true なら「前へ」方向の逆再生
-     * @param {number}   [durationMs] - 1回のめくりにかける時間（ミリ秒）。
-     *                                   省略時は通常の FLIP_MS を使う。
      *
      * reverse の意味（「前へ」を逆再生で実現する仕組み）:
      *   false（次へ）:
@@ -135,7 +128,7 @@ class BookAnimator {
      *     （= drawMobileCurl から見ると「t=1.0(見えない)→t=0.0(全面に見える)」
      *        という、ちょうど「次へ」の逆回しの絵になる）
      */
-    startFlipMobile(pages, currentPageIdx, toIdx, onFrame, onComplete, reverse = false, durationMs) {
+    startFlipMobile(pages, currentPageIdx, toIdx, onFrame, onComplete, reverse = false) {
         if (this.state.isAnimating) return;
         if (toIdx < 0 || toIdx >= pages.length || toIdx === currentPageIdx) return;
 
@@ -157,7 +150,7 @@ class BookAnimator {
         this._runLoop(onFrame, () => {
             this._resetState();
             onComplete(toIdx);
-        }, reverse, durationMs);
+        }, reverse);
     }
 
     /* ================================================================
@@ -283,7 +276,7 @@ class BookAnimator {
 
         // DIRECTION_THRESHOLD: 指/マウスの「ぶれ」を「スワイプ/ドラッグの
         // 意図」と誤判定しないための余裕（px）。
-        const DIRECTION_THRESHOLD = 4; // px。これ未満の移動は「まだ静止」とみなす
+        const DIRECTION_THRESHOLD = this.C.DIRECTION_THRESHOLD; // px。これ未満の移動は「まだ静止」とみなす
 
         // 方向がまだ未確定の場合、ここで確定させる
         if (this.state.dragDirection === null) {
@@ -371,7 +364,7 @@ class BookAnimator {
             return;
         }
 
-        const COMMIT_THRESHOLD = 0.25; // 画面幅の25%以上動かしたら確定
+        const COMMIT_THRESHOLD = this.C.COMMIT_THRESHOLD; // 画面幅のこの割合以上動かしたら確定
         const progress = this.state.progress;
 
         // 'next': progress が大きいほど確定に近い
@@ -458,30 +451,9 @@ class BookAnimator {
      *   で終わる。
      * @private
      */
-    /**
-     * RAF ループの本体（PC/Mobile 共通処理）
-     *
-     * @param {Function} onFrame    - 進捗更新後に毎フレーム呼ぶ（描画トリガー）
-     * @param {Function} onComplete - 進捗が終端（0.0 または 1.0）に達したら呼ぶ
-     * @param {boolean}  [reverse=false] - true なら進捗を 1.0→0.0 に向けて進める
-     * @param {number}   [durationMs] - 1回のアニメーションにかける時間（ミリ秒）。
-     *                                   省略時は通常の FLIP_MS を使う。
-     *                                   パラパラめくり（startFlutterPC等）では
-     *                                   ここに短い FLUTTER_MS を渡す。
-     *
-     * reverse の使い道:
-     *   「前へ」を逆再生で実現する場合、offFront/offBack の役割を
-     *   入れ替えた上で、進捗の向きそのものも逆転させる必要がある。
-     *   例えば「ページN-1からページNへの“次へ”アニメーション」を
-     *   逆に再生すれば、見た目は「ページNからページN-1への“前へ”」になる。
-     *   そのアニメーションは t=1.0（N-1が完全にカールして消えた状態
-     *   ＝現在の表示）から始まり、t=0.0（N-1が画面いっぱいに戻った状態）
-     *   で終わる。
-     * @private
-     */
-    _runLoop(onFrame, onComplete, reverse = false, durationMs) {
+    _runLoop(onFrame, onComplete, reverse = false) {
         const startTime = performance.now();
-        const flipMs     = durationMs || this.C.FLIP_MS;
+        const flipMs     = this.C.FLIP_MS;
         const state      = this.state;
 
         const step = (now) => {

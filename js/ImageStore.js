@@ -130,7 +130,7 @@ class ImageStore {
     async loadImage(spreadIndex) {
         const dataUrl = localStorage.getItem(this._keyFor(spreadIndex));
         if (!dataUrl) return null;
-        return this._dataUrlToImage(dataUrl);
+        return loadImageFromSrc(dataUrl);
     }
 
     /**
@@ -168,21 +168,6 @@ class ImageStore {
     }
 
     /**
-     * データURL文字列を Image オブジェクトとして読み込む
-     * @param {string} dataUrl
-     * @returns {Promise<HTMLImageElement>}
-     * @private
-     */
-    _dataUrlToImage(dataUrl) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload  = () => resolve(img);
-            img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-            img.src = dataUrl;
-        });
-    }
-
-    /**
      * 画像を maxDimension 以下に縮小し、新しいデータURLとして返す
      *
      * 縮小する理由:
@@ -196,7 +181,7 @@ class ImageStore {
      * @private
      */
     async _resizeImage(dataUrl, maxDimension) {
-        const img = await this._dataUrlToImage(dataUrl);
+        const img = await loadImageFromSrc(dataUrl);
 
         // 縦横の長い方を maxDimension に合わせる縮小率を計算
         // （すでに小さい画像は拡大しない = scale の上限を 1 にする）

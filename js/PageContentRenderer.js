@@ -627,6 +627,39 @@ class PageContentRenderer {
     }
 
     /**
+     * 1ページ分の「読み上げ用テキスト」を組み立てる（TTS 用）。
+     * 章・タイトル・質問・回答・本文を自然な順でつなぐ。
+     * @param {Object} page - ページデータ（_spreadData の left/right）
+     * @returns {string}
+     */
+    getPageReadText(page) {
+        if (!page) return '';
+        const parts = [];
+        if (page.chapter)  parts.push(page.chapter);
+        if (page.title)    parts.push(page.title);
+        if (page.question) parts.push(page.question);
+        if (page.answer)   parts.push(page.answer);
+        if (page.body)     parts.push(page.body);
+        // 改行は読み上げでは不要なので空白にし、空要素は除く
+        return parts.join('。 ').replace(/\n/g, ' ').trim();
+    }
+
+    /** 見開き（左右ページ）の読み上げテキストを返す（PC モード用） */
+    getSpreadReadText(spreadIndex) {
+        const s = this._spreadData[spreadIndex];
+        if (!s) return '';
+        return [this.getPageReadText(s.left), this.getPageReadText(s.right)]
+            .filter(Boolean).join('。 ');
+    }
+
+    /** 単一ページの読み上げテキストを返す（Mobile モード用、pages の番号で指定） */
+    getPageReadTextByIndex(pageIndex) {
+        const s = this._spreadData[Math.floor(pageIndex / 2)];
+        if (!s) return '';
+        return this.getPageReadText(pageIndex % 2 === 0 ? s.left : s.right);
+    }
+
+    /**
      * 左ページの下半分に画像を「ポラロイド写真」風に重ねて描画する
      *
      * なぜ drawPage() に組み込まず分離しているか:

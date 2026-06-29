@@ -61,6 +61,7 @@ class BookController {
         // モード切り替え時に相互変換して同期させる。
         this.isMobile        = false;
         this._debugForceMode = null; // デバッグ用: 'mobile' | 'pc' | null
+        this._ttsActive      = false; // 読み上げ（TTS）が動作中か
         this.currentSpread   = 0; // PC モードの現在見開きインデックス
         this.currentPageIdx  = 0; // Mobile モードの現在ページインデックス
 
@@ -958,6 +959,93 @@ class BookController {
 
         // 自動ページ送り（スライドショー）の開始/停止ボタン
         this.ui.autoPlayBtn.on('click', () => this._toggleAutoPlay());
+
+        // 読み上げ（TTS）ボタン
+        this.ui.ttsBtn.on('click', () => this._toggleTTS());
+    }
+
+    /* ================================================================
+       読み上げ（TTS / Web Speech API）
+       ================================================================ */
+
+    /**
+     * 読み上げの開始/停止を切り替える。
+     * ON の間は現在の見開き（モバイルは現在ページ）の文章を読み上げ、
+     * 読み終えたら自動で次へ送って続ける。本の最後まで来たら止まる。
+     * @private
+     */
+    _toggleTTS() {
+        if (this._ttsActive) { this._stopTTS(); return; }
+
+        // ブラウザ対応チェック
+        if (typeof window === 'undefined' || !window.speechSynthesis ||
+            typeof window.SpeechSynthesisUtterance === 'undefined') {
+            alert('お使いのブラウザは読み上げ（音声合成）に対応していません。');
+            return;
+        }
+
+        this._stopAutoPlay(); // 自動送りと競合しないよう止める
+        this._ttsActive = true;
+        this.ui.ttsBtn.text('⏹ 読み上げ停止');
+        this._speakCurrent();
+    }
+
+    /**
+     * 読み上げを停止する。
+     * @private
+     */
+    _stopTTS() {
+        this._ttsActive = false;
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+        this.ui.ttsBtn.text('🔊 読み上げ');
+    }
+
+    /**
+     * 現在の見開き／ページの文章を読み上げる。読み終えたら次へ進んで続ける。
+     * @private
+     */
+    _speakCurrent() {
+        if (!this._ttsActive) return;
+
+        const text = this.isMobile
+            ? this.contentRenderer.getPageReadTextByIndex(this.currentPageIdx)
+            : this.contentRenderer.getSpreadReadText(this.currentSpread);
+
+        // 読む内容が無いページ（空白ページ等）はスキップして次へ
+        if (!text) {
+            if (!this._advanceForTTS()) { this._stopTTS(); return; }
+            setTimeout(() => this._speakCurrent(), this.C.FLIP_MS + 200);
+            return;
+        }
+
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ja-JP';
+        u.rate = 1.0;
+        u.onend = () => {
+            if (!this._ttsActive) return;
+            if (!this._advanceForTTS()) { this._stopTTS(); return; }
+            // ページめくりの完了を待ってから次を読む
+            setTimeout(() => this._speakCurrent(), this.C.FLIP_MS + 200);
+        };
+        u.onerror = () => { /* 中断時など。状態はトグルで管理しているので無視 */ };
+        window.speechSynthesis.speak(u);
+    }
+
+    /**
+     * 読み上げのために次の見開き／ページへ進む。
+     * @returns {boolean} 進めたら true、末尾で進めなければ false
+     * @private
+     */
+    _advanceForTTS() {
+        if (this.isMobile) {
+            if (this.currentPageIdx >= this.contentRenderer.pages.length - 1) return false;
+        } else {
+            if (this.currentSpread >= this.contentRenderer.spreads.length - 1) return false;
+        }
+        this.goNext();
+        return true;
     }
 
     /**
@@ -997,6 +1085,7 @@ class BookController {
             this._stopAutoPlay();
         } else {
             // 停止中 → 開始する
+            if (this._ttsActive) this._stopTTS(); // 読み上げと競合しないよう止める
             const AUTO_PLAY_INTERVAL_MS = 3500; // 1ページ表示する時間（めくり時間込み）
 
             this.ui.autoPlayBtn.text('⏸ 停止').addClass('active');

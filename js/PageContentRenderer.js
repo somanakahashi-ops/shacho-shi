@@ -457,21 +457,23 @@ class PageContentRenderer {
         const { PAGE_W, PC_H } = this.C;
         const ox = (side === 'right') ? PAGE_W : 0;
 
-        // ページ下半分を写真エリアとする（上半分の文字と重ねない）。
-        // 傾き分の余白を見込んで、表示枠は少し控えめに取る。
-        const margin = 58;
+        // 写真エリアはページ「下部のバンド」に固定する。
+        // 本文（章＋タイトル＋本文）は最大で y≈435 付近まで伸びるため、
+        // それより十分下から写真を始めて、後ろの文字と重ならないようにする。
+        const margin       = 50; // 左右余白
+        const bottomMargin = 28; // 下端の余白
         const frameX = ox + margin;
-        const frameY = PC_H / 2 + 14;
+        const frameY = 448;                         // 本文の下端より下
         const frameW = PAGE_W - margin * 2;
-        const frameH = PC_H / 2 - margin - 14;
+        const frameH = PC_H - bottomMargin - frameY;
 
         // ── 背面にコルクボードを敷く（写真を画鋲で留める台） ──
         this._drawCorkBoard(c, frameX, frameY, frameW, frameH);
 
         // ── ポラロイドの余白（下だけ広い「顎」を作るのが味） ──
-        const padSide   = 16; // 左右
-        const padTop    = 16; // 上
-        const padBottom = 40; // 下（広め）
+        const padSide   = 14; // 左右
+        const padTop    = 14; // 上
+        const padBottom = 30; // 下（広め）
 
         // 写真本体を、カードの余白を差し引いた内側領域に contain で収める。
         // さらにボード周囲にコルクが見えるよう内側に寄せる（留めた感を強調）。

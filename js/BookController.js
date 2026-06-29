@@ -43,13 +43,14 @@ class BookController {
      * @param {HTMLCanvasElement} canvas
      * @param {Object} ui - { pageCounter, prevBtn, nextBtn, hintText, dropZone } の jQuery 要素
      */
-    constructor(constants, contentRenderer, bookRenderer, animator, imageStore, bookmarkStore, audioPlayer, pdfExporter, canvas, ui) {
+    constructor(constants, contentRenderer, bookRenderer, animator, imageStore, bookmarkStore, settingsStore, audioPlayer, pdfExporter, canvas, ui) {
         this.C               = constants;
         this.contentRenderer = contentRenderer;
         this.bookRenderer     = bookRenderer;
         this.animator         = animator;
         this.imageStore        = imageStore;
         this.bookmarkStore      = bookmarkStore;
+        this.settingsStore       = settingsStore;
         this.audioPlayer         = audioPlayer;
         this.pdfExporter          = pdfExporter;
         this.canvas           = canvas;
@@ -929,11 +930,7 @@ class BookController {
         // ページめくり音 ON/OFF トグル
         this.ui.soundToggle.on('change', (e) => {
             this.audioPlayer.setEnabled(e.target.checked);
-            try {
-                localStorage.setItem('ebook-sound-enabled', e.target.checked ? '1' : '0');
-            } catch (err) {
-                console.warn('音設定の保存に失敗しました:', err);
-            }
+            this.settingsStore.setSoundEnabled(e.target.checked);
         });
 
         // 自動ページ送り（スライドショー）の開始/停止ボタン
@@ -948,13 +945,7 @@ class BookController {
      * @private
      */
     _restoreSoundSetting() {
-        let enabled = true;
-        try {
-            const saved = localStorage.getItem('ebook-sound-enabled');
-            if (saved !== null) enabled = (saved === '1');
-        } catch (e) {
-            console.warn('音設定の読込に失敗しました:', e);
-        }
+        const enabled = this.settingsStore.getSoundEnabled();
         this.audioPlayer.setEnabled(enabled);
         this.ui.soundToggle.prop('checked', enabled);
     }

@@ -134,6 +134,10 @@ class BookController {
         this.contentRenderer.precomputeWrapping();
         console.log('[init] 折り返し計算完了');
 
+        // 写真の留め方を初回描画より前に反映しておく
+        // （しおりで画像付きページに復帰したとき、初回から正しい装飾で出す）
+        this.contentRenderer.photoStyle = this.settingsStore.getPhotoStyle();
+
         await this.applyMode(window.innerWidth < this.C.BREAKPOINT);
         console.log('[init] applyMode 完了, isMobile=', this.isMobile, 'canvas.width=', this.canvas.width, 'canvas.height=', this.canvas.height);
         await this._preloadCachedImage(this.currentSpread);
@@ -944,6 +948,14 @@ class BookController {
             this.settingsStore.setSoundEnabled(e.target.checked);
         });
 
+        // 写真の留め方セレクタ
+        this.ui.photoStyleSelect.on('change', (e) => {
+            const style = e.target.value;
+            this.contentRenderer.photoStyle = style;
+            this.settingsStore.setPhotoStyle(style);
+            this.render(); // 表示中の写真に即反映
+        });
+
         // 自動ページ送り（スライドショー）の開始/停止ボタン
         this.ui.autoPlayBtn.on('click', () => this._toggleAutoPlay());
     }
@@ -959,6 +971,10 @@ class BookController {
         const enabled = this.settingsStore.getSoundEnabled();
         this.audioPlayer.setEnabled(enabled);
         this.ui.soundToggle.prop('checked', enabled);
+        // 写真の留め方も同時に復元する
+        const photoStyle = this.settingsStore.getPhotoStyle();
+        this.contentRenderer.photoStyle = photoStyle;
+        this.ui.photoStyleSelect.val(photoStyle);
     }
 
     /**

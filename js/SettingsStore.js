@@ -25,9 +25,11 @@ class SettingsStore {
 
     /**
      * @param {string} [soundKey] - 音 ON/OFF を保存する localStorage キー
+     * @param {string} [photoStyleKey] - 写真の留め方を保存する localStorage キー
      */
-    constructor(soundKey = 'ebook-sound-enabled') {
+    constructor(soundKey = 'ebook-sound-enabled', photoStyleKey = 'ebook-photo-style') {
         this.soundKey = soundKey;
+        this.photoStyleKey = photoStyleKey;
     }
 
     /**
@@ -54,6 +56,34 @@ class SettingsStore {
             localStorage.setItem(this.soundKey, enabled ? '1' : '0');
         } catch (e) {
             console.warn('音設定の保存に失敗しました:', e);
+        }
+    }
+
+    /**
+     * 写真の留め方スタイルを読み込む。
+     * 'corners'（コーナー留め）/ 'pushpin'（画鋲）/ 'maskingtape' / 'tape' のいずれか。
+     * 保存が無い／読込失敗時は既定の 'corners' を返す。
+     * @returns {string}
+     */
+    getPhotoStyle() {
+        try {
+            const saved = localStorage.getItem(this.photoStyleKey);
+            if (saved) return saved;
+        } catch (e) {
+            console.warn('写真スタイルの読込に失敗しました:', e);
+        }
+        return 'corners';
+    }
+
+    /**
+     * 写真の留め方スタイルを保存する。
+     * @param {string} style
+     */
+    setPhotoStyle(style) {
+        try {
+            localStorage.setItem(this.photoStyleKey, style);
+        } catch (e) {
+            console.warn('写真スタイルの保存に失敗しました:', e);
         }
     }
 }

@@ -60,6 +60,11 @@ class PageContentRenderer {
         // 一度だけ計算して各ページへ覚えさせる（precomputeWrapping）ために使う。
         this._spreadData = bookData.spreads;
 
+        // 写真（ドロップ画像）の留め方スタイル。BookController が
+        // 設定（SettingsStore）から読み取ってここに反映する。
+        // 'corners' | 'pushpin' | 'maskingtape' | 'tape'
+        this.photoStyle = 'corners';
+
         // ── Q&A レイアウトの定数（描画と折り返し計算で必ず揃える）──
         this._QA_Q_FONT   = 'italic 16px Georgia, serif'; // 質問
         this._QA_A_FONT   = '15.5px Georgia, serif';      // 回答
@@ -721,6 +726,170 @@ class PageContentRenderer {
         c.lineWidth   = 1;
         c.strokeRect(px + 0.5, py + 0.5, photoW - 1, photoH - 1);
 
+        // ── 5) 留め方の装飾（ユーザーが選んだスタイル）──
+        // カード中心が原点の回転座標系の中で描くので、装飾もカードと
+        // 一緒にわずかに傾く。
+        this._drawPhotoDecoration(c, left, top, cardW, cardH);
+
+        c.restore();
+    }
+
+    /**
+     * 写真カードの「留め方」装飾を描く。スタイルは this.photoStyle で決まる:
+     *   'corners'     … 左上・右下に三角のフォトコーナー（アルバム差し込み風）
+     *   'pushpin'     … 上端中央に赤い画鋲
+     *   'maskingtape' … 上の両角に半透明パステルのマスキングテープ
+     *   'tape'        … 上の両角に半透明クリアのテープ
+     *
+     * 座標はカード中心が原点（left,top が左上、right,bottom が右下）。
+     * @param {CanvasRenderingContext2D} c
+     * @param {number} left, top, w, h - カードの矩形
+     * @private
+     */
+    _drawPhotoDecoration(c, left, top, w, h) {
+        const right  = left + w;
+        const bottom = top + h;
+        switch (this.photoStyle) {
+            case 'pushpin':
+                this._drawPushpin(c, 0, top + 14);
+                break;
+            case 'maskingtape':
+                this._drawTapeStrip(c, left, top, +1, 'masking');  // 左上角
+                this._drawTapeStrip(c, right, top, -1, 'masking'); // 右上角
+                break;
+            case 'tape':
+                this._drawTapeStrip(c, left, top, +1, 'clear');
+                this._drawTapeStrip(c, right, top, -1, 'clear');
+                break;
+            case 'corners':
+            default:
+                this._drawPhotoCorner(c, left, top, 'tl');      // 左上
+                this._drawPhotoCorner(c, right, bottom, 'br');  // 右下
+                break;
+        }
+    }
+
+    /**
+     * アルバムの「フォトコーナー」（写真の角を差し込む三角の留め具）を描く。
+     * @param {CanvasRenderingContext2D} c
+     * @param {number} x,y - 角の頂点座標
+     * @param {'tl'|'br'} corner - どの角か（向きを決める）
+     * @private
+     */
+    _drawPhotoCorner(c, x, y, corner) {
+        const s = 26; // 三角の一辺
+        const dx = (corner === 'tl') ? 1 : -1; // 内側へ向かう向き
+        const dy = (corner === 'tl') ? 1 : -1;
+        c.save();
+        // ほんのり影を落として浮きを表現
+        c.shadowColor   = 'rgba(0,0,0,0.25)';
+        c.shadowBlur    = 4;
+        c.shadowOffsetX = dx * 1.5;
+        c.shadowOffsetY = dy * 1.5;
+        // 黒っぽい台紙色の直角三角形（角にぴったり重ねる）
+        c.fillStyle = 'rgba(40,34,28,0.82)';
+        c.beginPath();
+        c.moveTo(x, y);
+        c.lineTo(x + dx * s, y);
+        c.lineTo(x, y + dy * s);
+        c.closePath();
+        c.fill();
+        c.restore();
+        // 斜辺に沿ったハイライトで、紙を差し込む“ポケット”感を出す
+        c.save();
+        c.strokeStyle = 'rgba(255,255,255,0.25)';
+        c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(x + dx * s, y);
+        c.lineTo(x, y + dy * s);
+        c.stroke();
+        c.restore();
+    }
+
+    /**
+     * カードの上角に貼る「テープ」を描く（マスキング／クリア共通）。
+     * 角をまたぐように斜め45度の短冊を描く。
+     * @param {CanvasRenderingContext2D} c
+     * @param {number} cornerX - 角の X（左上なら left、右上なら right）
+     * @param {number} cornerY - 角の Y（top）
+     * @param {number} dir - 内側へ向かう向き（左上=+1 / 右上=-1）
+     * @param {'masking'|'clear'} kind - テープの種類
+     * @private
+     */
+    _drawTapeStrip(c, cornerX, cornerY, dir, kind) {
+        const len  = 58; // 短冊の長さ
+        const half = 11; // 短冊の幅の半分
+        // 角の少し外側から内側へ、45度で横切らせる
+        const cxp = cornerX - dir * 6;
+        const cyp = cornerY - 6;
+        c.save();
+        c.translate(cxp, cyp);
+        c.rotate(dir * 45 * Math.PI / 180); // 左上は右下がり、右上は左下がりに
+        c.shadowColor   = 'rgba(0,0,0,0.18)';
+        c.shadowBlur    = 3;
+        c.shadowOffsetY = 1;
+
+        if (kind === 'masking') {
+            // パステルの半透明（紙テープ）。端は少しギザつかせる。
+            c.fillStyle = 'rgba(150,200,210,0.55)';
+        } else {
+            // クリアテープ（ほぼ透明＋うっすら白み）。
+            c.fillStyle = 'rgba(245,245,235,0.28)';
+        }
+        // 短冊（中心から左右に len/2）
+        c.beginPath();
+        c.rect(-len / 2, -half, len, half * 2);
+        c.fill();
+        c.shadowColor = 'transparent';
+
+        if (kind === 'clear') {
+            // クリアテープの“てかり”を斜めの白線で表現
+            c.strokeStyle = 'rgba(255,255,255,0.35)';
+            c.lineWidth = 1.5;
+            c.beginPath();
+            c.moveTo(-len / 2 + 3, -half + 3);
+            c.lineTo(len / 2 - 3, -half + 3);
+            c.stroke();
+        } else {
+            // マスキングテープの縁を少し濃く
+            c.strokeStyle = 'rgba(120,170,180,0.5)';
+            c.lineWidth = 1;
+            c.strokeRect(-len / 2, -half, len, half * 2);
+        }
+        c.restore();
+    }
+
+    /**
+     * 画鋲（プッシュピン）を上から見た形で描く。
+     * @param {CanvasRenderingContext2D} c
+     * @param {number} x,y - ピン頭の中心座標
+     * @private
+     */
+    _drawPushpin(c, x, y) {
+        c.save();
+        // 影
+        c.fillStyle = 'rgba(0,0,0,0.30)';
+        c.beginPath();
+        c.ellipse(x + 2, y + 6, 9, 4, 0, 0, Math.PI * 2);
+        c.fill();
+        // 頭（赤の光沢球）
+        const g = c.createRadialGradient(x - 4, y - 5, 2, x, y, 13);
+        g.addColorStop(0,   '#ff8a8a');
+        g.addColorStop(0.5, '#e23b3b');
+        g.addColorStop(1,   '#9e1f1f');
+        c.fillStyle = g;
+        c.beginPath();
+        c.arc(x, y, 11, 0, Math.PI * 2);
+        c.fill();
+        // 縁
+        c.lineWidth   = 1;
+        c.strokeStyle = 'rgba(110,18,18,0.6)';
+        c.stroke();
+        // ハイライト
+        c.fillStyle = 'rgba(255,255,255,0.8)';
+        c.beginPath();
+        c.arc(x - 4, y - 4, 3, 0, Math.PI * 2);
+        c.fill();
         c.restore();
     }
 

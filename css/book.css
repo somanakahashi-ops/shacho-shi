@@ -336,6 +336,18 @@ body.has-mobile-navbar {
     accent-color: #c9a961; /* チェック時の色をテーマカラーに合わせる */
 }
 
+/* 「写真の留め方」セレクタ。テーマに馴染む控えめな見た目にする */
+.toc-select {
+    font-family: 'Georgia', serif;
+    font-size: 0.92em;
+    color: #4a3f30;
+    background: #fffdf8;
+    border: 1px solid #c9a961;
+    border-radius: 6px;
+    padding: 3px 6px;
+    cursor: pointer;
+}
+
 .auto-play-btn {
     width: 100%;
     padding: 10px 16px;

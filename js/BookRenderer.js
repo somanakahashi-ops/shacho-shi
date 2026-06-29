@@ -262,7 +262,7 @@ class BookRenderer {
      * @param {Array} pages      - PageContentRenderer.pages
      * @param {number} currentPageIdx
      */
-    renderMobile(animState, pages, currentPageIdx) {
+    renderMobile(animState, pages, currentPageIdx, pageImage = null) {
         const { MOB_W, MOB_H } = this.C;
         const ctx = this.ctx;
 
@@ -296,6 +296,12 @@ class BookRenderer {
             const page = pages[currentPageIdx];
             const pg   = this.contentRenderer.preRenderPage(page.fn, page.isRight);
             ctx.drawImage(pg, 0, 0);
+
+            // この見開きに紐づく画像があれば、文字の上に重ねて描く
+            // （モバイルは左ページ＝x=0 基準なので side は 'left'）。
+            if (pageImage) {
+                this.contentRenderer.drawImageOverlay(ctx, 'left', pageImage);
+            }
         } else if (PageFlipEffect.DEBUG) {
             // ── DEBUG モード: カール変形を無効化 ──────────────
             // offFront と offBack をそのまま（変形なし）並べて表示し、

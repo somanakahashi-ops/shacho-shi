@@ -89,18 +89,6 @@ $(document).ready(function () {
     });
 
     $('#debug-mode-btn').on('click', () => controller._toggleDebugMode());
-
-    // ── データ管理画面（文章の編集・画像の管理）──
-    const contentStore = new ContentStore();
-    new DataManager(controller, contentStore, {
-        overlay:   $('#dm-overlay'),
-        openBtn:   $('#data-manage-btn'),
-        closeBtn:  $('#dm-close'),
-        tabs:      $('.dm-tab'),
-        bodyText:  $('#dm-body-text'),
-        bodyImage: $('#dm-body-image'),
-        saveBtn:   $('#dm-save'),
-        resetBtn:  $('#dm-reset'),
-        status:    $('#dm-status')
-    });
+    // 「⚙ データ管理」は別ページ（manage.html）へ遷移するリンクなので、
+    // ここでの JS 配線は不要（HTML の <a href="manage.html"> が担う）。
 });

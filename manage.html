@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データ管理 ― 社長の自分史</title>
+
+    <!-- jQuery（本ページと同じ。DOM操作に使う） -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <link rel="stylesheet" href="css/book.css">
+</head>
+<body class="dm-page-body">
+
+<!-- データ管理画面本体（このページ全体が管理画面）。
+     中身（文章フォーム・画像リスト）は js/DataManager.js が組み立てる。 -->
+<div class="dm-overlay" id="dm-overlay">
+    <div class="dm-panel">
+        <div class="dm-header">
+            <button class="dm-back" id="dm-back">← 本に戻る</button>
+            <span class="dm-title">データ管理</span>
+            <span class="dm-header-spacer"></span>
+        </div>
+        <div class="dm-tabs">
+            <button class="dm-tab active" data-tab="text">📝 文章</button>
+            <button class="dm-tab" data-tab="image">🖼 画像</button>
+        </div>
+        <div class="dm-body" id="dm-body-text"></div>
+        <div class="dm-body" id="dm-body-image" hidden></div>
+        <div class="dm-footer">
+            <span class="dm-status" id="dm-status"></span>
+            <button class="dm-reset" id="dm-reset">初期状態に戻す</button>
+            <button class="dm-save" id="dm-save">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================
+     管理画面用スクリプト。
+     本体（描画クラス群）のうち、データ参照とプレビュー描画に必要な
+     ものだけを読み込む（アニメーションや音は不要）。
+     ================================================================ -->
+<script src="js/util.js"></script>
+<script src="js/constants.js"></script>
+<script src="data/book-data.js"></script>
+<script src="js/PageContentRenderer.js"></script>
+<script src="js/ImageStore.js"></script>
+<script src="js/ContentStore.js"></script>
+<script src="js/DataManager.js"></script>
+<script>
+$(document).ready(function () {
+    const contentRenderer = new PageContentRenderer(BOOK_DATA, BOOK_CONST);
+    const imageStore      = new ImageStore();
+    const contentStore    = new ContentStore();
+
+    const dm = new DataManager(
+        { contentRenderer, imageStore, contentStore, C: BOOK_CONST },
+        {
+            backBtn:   $('#dm-back'),
+            tabs:      $('.dm-tab'),
+            bodyText:  $('#dm-body-text'),
+            bodyImage: $('#dm-body-image'),
+            saveBtn:   $('#dm-save'),
+            resetBtn:  $('#dm-reset'),
+            status:    $('#dm-status')
+        },
+        () => { location.href = 'social_history_ebook.html'; } // 本のページへ遷移
+    );
+    dm.build();
+});
+</script>
+</body>
+</html>

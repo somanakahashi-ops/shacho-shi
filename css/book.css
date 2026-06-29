@@ -611,6 +611,7 @@ body.has-mobile-navbar {
    データ管理画面（DataManager）
    ================================================================ */
 .data-manage-btn {
+    display: block;
     width: 100%;
     margin-top: 10px;
     padding: 10px 16px;
@@ -621,6 +622,9 @@ body.has-mobile-navbar {
     font-family: 'Georgia', serif;
     font-size: 0.88em;
     cursor: pointer;
+    text-align: center;
+    text-decoration: none;   /* <a> の下線を消す */
+    box-sizing: border-box;
 }
 .data-manage-btn:hover { background: rgba(120, 110, 95, 0.16); }
 

@@ -457,28 +457,24 @@ class PageContentRenderer {
         const { PAGE_W, PC_H } = this.C;
         const ox = (side === 'right') ? PAGE_W : 0;
 
-        // ページ下半分を写真エリアとする（上半分の文字と重ねない）。
-        // 傾き分の余白を見込んで、表示枠は少し控えめに取る。
-        const margin = 58;
+        // 写真エリアはページ「下部のバンド」に固定する。
+        // 本文（章＋タイトル＋本文）は最大で y≈435 付近まで伸びるため、
+        // それより十分下から写真を始めて、後ろの文字と重ならないようにする。
+        const margin       = 50; // 左右余白
+        const bottomMargin = 28; // 下端の余白
         const frameX = ox + margin;
-        const frameY = PC_H / 2 + 14;
+        const frameY = 448;                         // 本文の下端より下
         const frameW = PAGE_W - margin * 2;
-        const frameH = PC_H / 2 - margin - 14;
-
-        // ── 背面にコルクボードを敷く（写真を画鋲で留める台） ──
-        this._drawCorkBoard(c, frameX, frameY, frameW, frameH);
+        const frameH = PC_H - bottomMargin - frameY;
 
         // ── ポラロイドの余白（下だけ広い「顎」を作るのが味） ──
-        const padSide   = 16; // 左右
-        const padTop    = 16; // 上
-        const padBottom = 40; // 下（広め）
+        const padSide   = 14; // 左右
+        const padTop    = 14; // 上
+        const padBottom = 30; // 下（広め）
 
-        // 写真本体を、カードの余白を差し引いた内側領域に contain で収める。
-        // さらにボード周囲にコルクが見えるよう内側に寄せる（留めた感を強調）。
-        const boardInsetX = frameW * 0.11;
-        const boardInsetY = frameH * 0.12;
-        const innerW = frameW - boardInsetX * 2 - padSide * 2;
-        const innerH = frameH - boardInsetY * 2 - padTop - padBottom;
+        // 写真本体を、カードの余白を差し引いた内側領域に contain で収める
+        const innerW = frameW - padSide * 2;
+        const innerH = frameH - padTop - padBottom;
         const scale  = Math.min(innerW / img.width, innerH / img.height);
         const photoW = img.width  * scale;
         const photoH = img.height * scale;
@@ -535,10 +531,6 @@ class PageContentRenderer {
         c.lineWidth   = 1;
         c.strokeRect(px + 0.5, py + 0.5, photoW - 1, photoH - 1);
 
-        // ── 5) カード上端中央に画鋲（プッシュピン）を刺す ──
-        // 回転座標系の中で描くので、カードと一緒にわずかに傾く。
-        this._drawPushpin(c, 0, top + 16);
-
         c.restore();
     }
 
@@ -556,125 +548,6 @@ class PageContentRenderer {
         c.arcTo(x,     y + h, x,     y,     rr);
         c.arcTo(x,     y,     x + w, y,     rr);
         c.closePath();
-    }
-
-    /**
-     * 写真の背面に敷くコルクボードを描く。
-     *
-     * 見た目の作り方:
-     *   ・暖色のベース（上が明るい縦グラデ）で板の質感。
-     *   ・細かな斑点を多数散らしてコルク特有のザラつきを表現。
-     *     斑点は「固定シードの擬似乱数」で生成するため、再描画しても
-     *     模様がチラつかず常に同じ配置になる。
-     *   ・縁に濃い枠線と落ち影を付け、ページに留めた板の立体感を出す。
-     *
-     * @param {CanvasRenderingContext2D} c
-     * @param {number} x,y,w,h - コルクボードの矩形
-     * @private
-     */
-    _drawCorkBoard(c, x, y, w, h) {
-        const r = 8;
-
-        // ベース（落ち影付き）
-        c.save();
-        c.shadowColor   = 'rgba(60,40,20,0.28)';
-        c.shadowBlur    = 18;
-        c.shadowOffsetY = 7;
-        this._roundRectPath(c, x, y, w, h, r);
-        const g = c.createLinearGradient(0, y, 0, y + h);
-        g.addColorStop(0, '#d8b884');
-        g.addColorStop(1, '#c1985e');
-        c.fillStyle = g;
-        c.fill();
-        c.restore();
-
-        // 斑点（角丸内にクリップして散らす）
-        c.save();
-        this._roundRectPath(c, x, y, w, h, r);
-        c.clip();
-        const rnd = this._mulberry32(0x5eedc0);
-        const cols = [
-            'rgba(120, 86, 46, 0.35)',
-            'rgba( 90, 64, 34, 0.28)',
-            'rgba(232,206,160, 0.40)',
-            'rgba(160,120, 70, 0.30)'
-        ];
-        const n = Math.floor((w * h) / 230);
-        for (let i = 0; i < n; i++) {
-            const sx = x + rnd() * w;
-            const sy = y + rnd() * h;
-            const sr = 0.6 + rnd() * 2.2;
-            c.fillStyle = cols[(rnd() * cols.length) | 0];
-            c.beginPath();
-            c.arc(sx, sy, sr, 0, Math.PI * 2);
-            c.fill();
-        }
-        c.restore();
-
-        // 縁取り
-        c.save();
-        this._roundRectPath(c, x, y, w, h, r);
-        c.lineWidth   = 2;
-        c.strokeStyle = 'rgba(92, 62, 30, 0.55)';
-        c.stroke();
-        c.restore();
-    }
-
-    /**
-     * 画鋲（プッシュピン）を上から見た形で描く。
-     * @param {CanvasRenderingContext2D} c
-     * @param {number} x,y - ピン頭の中心座標
-     * @private
-     */
-    _drawPushpin(c, x, y) {
-        c.save();
-
-        // 影（コルクに落ちる）
-        c.fillStyle = 'rgba(0,0,0,0.30)';
-        c.beginPath();
-        c.ellipse(x + 2, y + 6, 9, 4, 0, 0, Math.PI * 2);
-        c.fill();
-
-        // ピン頭（赤の光沢球）
-        const g = c.createRadialGradient(x - 4, y - 5, 2, x, y, 13);
-        g.addColorStop(0,   '#ff8a8a');
-        g.addColorStop(0.5, '#e23b3b');
-        g.addColorStop(1,   '#9e1f1f');
-        c.fillStyle = g;
-        c.beginPath();
-        c.arc(x, y, 11, 0, Math.PI * 2);
-        c.fill();
-
-        // 縁
-        c.lineWidth   = 1;
-        c.strokeStyle = 'rgba(110,18,18,0.6)';
-        c.stroke();
-
-        // ハイライト（つやの白点）
-        c.fillStyle = 'rgba(255,255,255,0.8)';
-        c.beginPath();
-        c.arc(x - 4, y - 4, 3, 0, Math.PI * 2);
-        c.fill();
-
-        c.restore();
-    }
-
-    /**
-     * 固定シードの擬似乱数生成器（mulberry32）。
-     * 同じシードなら常に同じ数列を返すので、コルクの斑点配置を
-     * 毎回の再描画で安定させる（チラつき防止）のに使う。
-     * @param {number} seed
-     * @returns {() => number} 0〜1 の乱数を返す関数
-     * @private
-     */
-    _mulberry32(seed) {
-        let a = seed >>> 0;
-        return function () {
-            a |= 0; a = (a + 0x6D2B79F5) | 0;
-            let t = Math.imul(a ^ (a >>> 15), 1 | a);
-            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
     }
 
     /**

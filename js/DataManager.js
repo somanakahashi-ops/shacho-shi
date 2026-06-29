@@ -108,21 +108,70 @@ class DataManager {
                 + (page.title || page.qLabel || `ページ ${pageIndex}`);
             $('<div>').addClass('dm-page-head').text(`p.${page.pageNum || pageIndex}　${heading}`).appendTo($card);
 
+            // 入力欄（左）とプレビュー（右）の横並び
+            const $row = $('<div>').addClass('dm-page-row');
+            const $fields = $('<div>').addClass('dm-page-fields');
+
             FIELDS.forEach((f) => {
                 if (typeof page[f.key] !== 'string') return; // そのフィールドを持つページのみ
-                const $row = $('<label>').addClass('dm-field');
-                $('<span>').addClass('dm-field-label').text(f.label).appendTo($row);
+                const $field = $('<label>').addClass('dm-field');
+                $('<span>').addClass('dm-field-label').text(f.label).appendTo($field);
                 const $inp = (f.type === 'textarea') ? $('<textarea>') : $('<input type="text">');
                 $inp.addClass('dm-input')
                     .val(page[f.key])
                     .attr('data-page', pageIndex)
                     .attr('data-field', f.key);
-                $row.append($inp);
-                $card.append($row);
+                $field.append($inp);
+                $fields.append($field);
             });
 
+            // プレビュー（編集内容を即座に反映して描画する）
+            const $prevWrap = $('<div>').addClass('dm-preview-wrap');
+            $('<div>').addClass('dm-preview-cap').text('プレビュー').appendTo($prevWrap);
+            const $canvas = $('<canvas>')
+                .addClass('dm-preview')
+                .attr('width', this.controller.C.PAGE_W)
+                .attr('height', this.controller.C.PC_H);
+            $prevWrap.append($canvas);
+
+            $row.append($fields, $prevWrap);
+            $card.append($row);
             $body.append($card);
+
+            // 入力のたびにプレビューを更新（負荷軽減のため少し遅延）
+            const canvasEl = $canvas[0];
+            const renderPreview = () => this._renderPreview(canvasEl, pageIndex, $fields.find('.dm-input'));
+            let timer = null;
+            $fields.find('.dm-input').on('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(renderPreview, 120);
+            });
+            renderPreview(); // 初期表示
         });
+    }
+
+    /**
+     * 編集中の内容で1ページ分のプレビューを描く。
+     * 実データは書き換えず、入力欄の現在値を一時的に重ねて描画する。
+     * @param {HTMLCanvasElement} canvas
+     * @param {number} pageIndex
+     * @param {JQuery} $inputs - そのページの入力欄
+     * @private
+     */
+    _renderPreview(canvas, pageIndex, $inputs) {
+        const real = this._pageByIndex(pageIndex);
+        if (!real) return;
+        // 一時ページ = 実データ + 入力中の値（折り返しキャッシュは外して再計算させる）
+        const temp = Object.assign({}, real);
+        delete temp._qLines;
+        delete temp._aLines;
+        $inputs.each((_, el) => { temp[el.getAttribute('data-field')] = el.value; });
+
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // プレビューは常に左ページ基準（ox=0）で描けば PAGE_W 幅に収まる
+        this.controller.contentRenderer.drawPage(ctx, 'left', temp);
     }
 
     /** @private 文章を保存して本へ反映する */

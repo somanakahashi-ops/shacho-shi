@@ -65,13 +65,25 @@ class PageContentRenderer {
         this._QA_A_FONT   = '15.5px Georgia, serif';      // 回答
         this._QA_MAXWIDTH = this.C.PAGE_W - 96;           // 折り返し幅（左右余白48px）
 
-        // 折り返し計算専用の測定用コンテキスト（1つに固定）。
-        // 毎回その場の Canvas（メイン or めくり用オフスクリーン）で
-        // measureText すると、Canvas ごとに結果が微妙に食い違い、
-        // 静止時とめくり時で行の折り返しがズレて「フォントが変わった」
-        // ように見えることがある。常にこの同じコンテキストで測ることで
-        // 折り返しを完全に一定にする。
-        this._measureCtx = document.createElement('canvas').getContext('2d');
+        // ── 事前描画＆計測用の「隠し描画面」（DOM に接続する）──
+        // ページめくり用の事前描画を、DOM に接続していない Canvas で
+        // 行うと、文書の言語(lang="ja")の文脈を共有しないため、
+        // 日本語の serif フォールバックが画面上のメイン Canvas と
+        // 食い違い、「静止時とめくり時で書体が変わる」原因になる。
+        // そこで、画面外に隠した上で DOM に接続した Canvas を1枚用意し、
+        // 事前描画も折り返し計測もすべてこの面で行うことで、メイン
+        // Canvas と同じフォント解決になるようにする。
+        const surface = document.createElement('canvas');
+        surface.width  = this.C.PAGE_W;
+        surface.height = this.C.PC_H;
+        surface.setAttribute('aria-hidden', 'true');
+        surface.style.cssText = 'position:fixed;left:-99999px;top:0;pointer-events:none;';
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.appendChild(surface);
+        }
+        this._surface    = surface;
+        this._surfaceCtx = surface.getContext('2d');
+        this._measureCtx = this._surfaceCtx; // 折り返し計測も同じ面で行う
 
         // BOOK_DATA（純粋なデータ）を描画関数の配列に変換する。
         // コンテンツ変更時は book-data.js だけ編集すればよく、
@@ -786,23 +798,32 @@ class PageContentRenderer {
         }
 
         const { PAGE_W, PC_H } = this.C;
+
+        // まず DOM 接続済みの隠し描画面に描く（メイン Canvas と同じ
+        // フォント解決になるので、静止時とめくり時で書体が一致する）。
+        const sctx = this._surfaceCtx;
+        sctx.setTransform(1, 0, 0, 1, 0, 0);
+        sctx.clearRect(0, 0, PAGE_W, PC_H);
+        // right ページ: ox=PAGE_W の描画を x=0 基準に正規化
+        if (isRight) sctx.translate(-PAGE_W, 0);
+        drawFn(sctx);
+        // 画像が指定されていれば、文字コンテンツの上に重ねて描く。
+        // isRight 正規化済みの座標系で描くため side は常に 'left'。
+        if (overlayImg) {
+            this.drawImageOverlay(sctx, 'left', overlayImg);
+        }
+        sctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        // 描いた結果（ピクセル）を、返却用の Canvas にコピーする。
+        // コピーは画像転送なので、ここで作る Canvas が DOM 非接続でも
+        // フォントには影響しない（文字はもう描画面でラスタライズ済み）。
         const off    = document.createElement('canvas');
         off.width    = PAGE_W; // = MOB_W（PC/Mobile 共通サイズ）
         off.height   = PC_H;   // = MOB_H
-        const offCtx = off.getContext('2d');
-        // right ページ: ox=PAGE_W の描画を x=0 基準に正規化
-        if (isRight) offCtx.translate(-PAGE_W, 0);
-        drawFn(offCtx);
+        off.getContext('2d').drawImage(this._surface, 0, 0);
 
-        // 画像が指定されていれば、文字コンテンツの上に重ねて描く。
-        // isRight 正規化済みの座標系で描くため side は常に 'left'
-        // （x=0 基準であることを drawImageOverlay に伝えるための指定）。
-        if (overlayImg) {
-            this.drawImageOverlay(offCtx, 'left', overlayImg);
-        } else {
-            // オーバーレイなしの結果のみキャッシュする
-            this._renderCache.set(drawFn, off);
-        }
+        // オーバーレイなしの結果のみキャッシュする
+        if (!overlayImg) this._renderCache.set(drawFn, off);
 
         return off;
     }

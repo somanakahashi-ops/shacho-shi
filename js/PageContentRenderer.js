@@ -660,6 +660,24 @@ class PageContentRenderer {
     }
 
     /**
+     * データ管理画面で本文を編集した後に呼ぶ。
+     * ページオブジェクト自体は呼び出し側が書き換える前提で、ここでは
+     * キャッシュ（事前描画・折り返し）を捨てて作り直す。
+     * spreads/pages の描画クロージャは同じページオブジェクトを参照し
+     * 続けるので、フィールドを書き換えるだけで新しい内容が描かれる。
+     */
+    refreshAfterEdit() {
+        this._renderCache.clear();
+        this._spreadData.forEach((s) => {
+            ['left', 'right'].forEach((side) => {
+                const p = s[side];
+                if (p) { delete p._qLines; delete p._aLines; }
+            });
+        });
+        this.precomputeWrapping();
+    }
+
+    /**
      * 左ページの下半分に画像を「ポラロイド写真」風に重ねて描画する
      *
      * なぜ drawPage() に組み込まず分離しているか:

@@ -180,6 +180,21 @@ const PAGES = [
 const _LEFT_BG  = '#faf8f2';
 const _RIGHT_BG = '#fdfcf8';
 
+// ── データ管理画面で編集された本文（上書き分）を反映する ──
+// localStorage の "ebook-content-override" に { ページ番号: { フィールド: 値 } }
+// が保存されていれば、上の PAGES（初期値）へフィールド単位で上書きする。
+// 保存が無いフィールドは初期値のまま。管理画面で「初期状態に戻す」と
+// この保存が消えるので、本は完全に初期状態へ戻る。
+try {
+    const _override = JSON.parse(localStorage.getItem('ebook-content-override') || '{}');
+    Object.keys(_override).forEach((idx) => {
+        const p = PAGES[idx];
+        if (p) Object.assign(p, _override[idx]);
+    });
+} catch (e) {
+    console.warn('本文の上書き反映に失敗しました:', e);
+}
+
 // ページ番号を採番（表紙だけ "Cover"）
 PAGES.forEach((p, idx) => { p.pageNum = (idx === 0) ? 'Cover' : String(idx); });
 

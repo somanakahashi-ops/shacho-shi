@@ -1537,6 +1537,33 @@ class BookController {
         if (img) this._imageCache.set(spreadIndex, img);
     }
 
+    /* ================================================================
+       データ管理画面（DataManager）から呼ばれる反映用メソッド
+       ================================================================ */
+
+    /**
+     * 本文の編集をページ表示へ反映する。
+     * （ページオブジェクトのフィールドは DataManager が既に書き換え済み）
+     */
+    refreshContent() {
+        this.contentRenderer.refreshAfterEdit();
+        this._buildTocList();           // タイトル変更を目次にも反映
+        this.render();
+        this.updateUI();
+    }
+
+    /**
+     * 指定見開きの画像を保存状態から読み直してキャッシュ更新・再描画する。
+     * 追加/差し替え/削除のいずれにも対応（無ければキャッシュから削除）。
+     * @param {number} spreadIndex
+     */
+    async refreshImage(spreadIndex) {
+        const img = await this.imageStore.loadImage(spreadIndex);
+        if (img) this._imageCache.set(spreadIndex, img);
+        else     this._imageCache.delete(spreadIndex);
+        this.render();
+    }
+
     /**
      * デバウンス後に実行される実際のリサイズ処理
      * @private

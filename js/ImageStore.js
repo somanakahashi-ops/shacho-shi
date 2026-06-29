@@ -134,6 +134,16 @@ class ImageStore {
     }
 
     /**
+     * 見開きインデックスに保存された画像のデータURL文字列をそのまま返す。
+     * （サムネイル表示など、Image 化せず生のデータURLが欲しい場面用）
+     * @param {number} spreadIndex
+     * @returns {string|null}
+     */
+    getDataUrl(spreadIndex) {
+        return localStorage.getItem(this._keyFor(spreadIndex));
+    }
+
+    /**
      * 見開きインデックスに画像が保存済みかどうかを同期的に確認する
      * （Image の読み込み完了を待たずに真偽値だけ知りたい場合に使う）
      *

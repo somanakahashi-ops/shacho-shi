@@ -89,4 +89,18 @@ $(document).ready(function () {
     });
 
     $('#debug-mode-btn').on('click', () => controller._toggleDebugMode());
+
+    // ── データ管理画面（文章の編集・画像の管理）──
+    const contentStore = new ContentStore();
+    new DataManager(controller, contentStore, {
+        overlay:   $('#dm-overlay'),
+        openBtn:   $('#data-manage-btn'),
+        closeBtn:  $('#dm-close'),
+        tabs:      $('.dm-tab'),
+        bodyText:  $('#dm-body-text'),
+        bodyImage: $('#dm-body-image'),
+        saveBtn:   $('#dm-save'),
+        resetBtn:  $('#dm-reset'),
+        status:    $('#dm-status')
+    });
 });

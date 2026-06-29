@@ -85,8 +85,32 @@
     <div class="toc-footer" id="toc-footer">
         <button class="pdf-export-btn" id="pdf-export-btn">📄 PDFをダウンロード</button>
         <p class="pdf-export-status" id="pdf-export-status"></p>
+        <button class="data-manage-btn" id="data-manage-btn">⚙ データ管理（文章・画像）</button>
     </div>
 </nav>
+
+<!-- ── データ管理画面（文章の編集・画像の管理） ───────────────
+     ⚙ ボタンで開く全画面オーバーレイ。中身は js/DataManager.js が
+     開いたときに動的に組み立てる。 -->
+<div class="dm-overlay" id="dm-overlay" hidden>
+    <div class="dm-panel">
+        <div class="dm-header">
+            <span class="dm-title">データ管理</span>
+            <button class="dm-close" id="dm-close" aria-label="閉じる">×</button>
+        </div>
+        <div class="dm-tabs">
+            <button class="dm-tab active" data-tab="text">📝 文章</button>
+            <button class="dm-tab" data-tab="image">🖼 画像</button>
+        </div>
+        <div class="dm-body" id="dm-body-text"></div>
+        <div class="dm-body" id="dm-body-image" hidden></div>
+        <div class="dm-footer">
+            <span class="dm-status" id="dm-status"></span>
+            <button class="dm-reset" id="dm-reset">初期状態に戻す</button>
+            <button class="dm-save" id="dm-save">保存して反映</button>
+        </div>
+    </div>
+</div>
 
 <!-- ── 読了プログレスバー ───────────────────────────────
      画面の最上部に固定表示する薄い線。全体の何%まで読んだかを
@@ -139,9 +163,11 @@
     <script src="js/ImageStore.js"></script>
     <script src="js/BookmarkStore.js"></script>
     <script src="js/SettingsStore.js"></script>
+    <script src="js/ContentStore.js"></script>
     <script src="js/AudioPlayer.js"></script>
     <script src="js/PdfExporter.js"></script>
     <script src="js/BookController.js"></script>
+    <script src="js/DataManager.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

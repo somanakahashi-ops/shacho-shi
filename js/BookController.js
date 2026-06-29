@@ -1290,14 +1290,14 @@ class BookController {
      *      （Mobile モード・表紙ページではドロップを無視する）
      *   3. ドロップ座標が左ページ側かどうかを確認
      *      （右ページへのドロップは今回の要件外のため無視する）
-     *   4. ImageStore でリサイズのみ行う（永続化はまだ行わない）
+     *   4. ImageStore でリサイズして localStorage に保存する
      *   5. 画像キャッシュを更新して再描画
      *
      * 永続化について:
-     *   現時点では画像をブラウザに保存する機能はまだ有効にしていない
-     *   （将来的に対応予定）。そのため、ドロップした画像は
-     *   ページを離れたり再読み込みしたりすると消える
-     *   （タブを閉じない限り、表示中は _imageCache に残る）。
+     *   ImageStore.saveImage() で見開きインデックスをキーに localStorage へ
+     *   保存するため、ページを離れても・再読み込みしても画像は残る。
+     *   （容量上限などで保存に失敗した場合も、その場の表示だけは継続できる
+     *     ように saveImage がリサイズ済みデータURLを返す。）
      *
      * @param {DragEvent} dragEvent - ブラウザネイティブの DragEvent
      * @private
@@ -1336,9 +1336,9 @@ class BookController {
 
             const file = files[0]; // 複数ドロップされても先頭の 1 枚のみ採用
 
-            // リサイズのみ行う（localStorage への保存は行わない）
-            const dataUrl = await this.imageStore.prepareImage(file);
-            console.log('[drop] prepareImage 完了, dataUrl長さ=', dataUrl ? dataUrl.length : 'null');
+            // リサイズして localStorage に保存する（再読み込み後も残る）
+            const dataUrl = await this.imageStore.saveImage(file, this.currentSpread);
+            console.log('[drop] saveImage 完了, dataUrl長さ=', dataUrl ? dataUrl.length : 'null');
 
             // データURLから Image オブジェクトを作りキャッシュに登録する。
             // ここで再度ファイルを読み直すのではなく、prepareImage が返した

@@ -123,6 +123,17 @@ class BookController {
         await this.contentRenderer.loadBackgroundImages(BOOK_DATA);
         console.log('[init] 背景画像の読み込み完了');
 
+        // ── フォント確定を待ってから Q&A の折り返しを確定する ──
+        // フォントが未確定のまま文字幅を測ると、後で再描画したときに
+        // 折り返しがズレる（＝めくり開始時にフォント/レイアウトが
+        // 変わって見える）。フォント読み込み完了を待ってから、
+        // 折り返しを一度だけ計算しておく。
+        if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+            try { await document.fonts.ready; } catch (e) { /* 古い環境では無視 */ }
+        }
+        this.contentRenderer.precomputeWrapping();
+        console.log('[init] 折り返し計算完了');
+
         await this.applyMode(window.innerWidth < this.C.BREAKPOINT);
         console.log('[init] applyMode 完了, isMobile=', this.isMobile, 'canvas.width=', this.canvas.width, 'canvas.height=', this.canvas.height);
         await this._preloadCachedImage(this.currentSpread);

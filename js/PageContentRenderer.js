@@ -56,6 +56,23 @@ class PageContentRenderer {
     constructor(bookData, constants) {
         this.C = constants;
 
+        // 生のページデータ（左右）への参照。Q&A の折り返しを起動時に
+        // 一度だけ計算して各ページへ覚えさせる（precomputeWrapping）ために使う。
+        this._spreadData = bookData.spreads;
+
+        // ── Q&A レイアウトの定数（描画と折り返し計算で必ず揃える）──
+        this._QA_Q_FONT   = 'italic 16px Georgia, serif'; // 質問
+        this._QA_A_FONT   = '15.5px Georgia, serif';      // 回答
+        this._QA_MAXWIDTH = this.C.PAGE_W - 96;           // 折り返し幅（左右余白48px）
+
+        // 折り返し計算専用の測定用コンテキスト（1つに固定）。
+        // 毎回その場の Canvas（メイン or めくり用オフスクリーン）で
+        // measureText すると、Canvas ごとに結果が微妙に食い違い、
+        // 静止時とめくり時で行の折り返しがズレて「フォントが変わった」
+        // ように見えることがある。常にこの同じコンテキストで測ることで
+        // 折り返しを完全に一定にする。
+        this._measureCtx = document.createElement('canvas').getContext('2d');
+
         // BOOK_DATA（純粋なデータ）を描画関数の配列に変換する。
         // コンテンツ変更時は book-data.js だけ編集すればよく、
         // このクラス自体は変更不要にするための変換ステップ。
@@ -350,7 +367,7 @@ class PageContentRenderer {
         // 代わりに専用の Q&A レイアウト（_drawQA）で描く。
         const isQA = !!(answer || question);
         if (isQA) {
-            this._drawQA(c, ox, qLabel, question, answer);
+            this._drawQA(c, ox, page);
         }
 
         // ── 3. 章ラベル ─────────────────────────────────────
@@ -455,46 +472,49 @@ class PageContentRenderer {
      *   ・金色の区切り線
      *   ・回答文（読みやすい本文サイズ）
      *
-     * 長文でもページ幅に収まるよう、measureText で自動折り返しする
-     * （book-data 側で手動改行を入れる必要がない）。全体は文字エリアの
-     * 上寄りに配置し、下部（写真エリア）には掛からないようにする。
+     * 長文でもページ幅に収まるよう自動折り返しするが、その行分割は
+     * precomputeWrapping() が起動時に一度だけ計算して page._qLines /
+     * page._aLines に格納したものを使う。こうすることで、静止時
+     * （メイン Canvas）とめくり時（オフスクリーン Canvas）で折り返しが
+     * 食い違わず、めくり開始時に行がズレる不具合を防ぐ。
+     * （万一未計算なら、その場で測って描く安全策も入れてある。）
      *
      * @param {CanvasRenderingContext2D} c
-     * @param {number} ox - ページ左端の X（left=0 / right=PAGE_W）
-     * @param {string|null} qLabel  - "Q1" などの番号ラベル
-     * @param {string|null} question - 質問文
-     * @param {string|null} answer   - 回答文
+     * @param {number} ox  - ページ左端の X（left=0 / right=PAGE_W）
+     * @param {Object} page - ページデータ（qLabel/question/answer と
+     *                        precompute 済みの _qLines/_aLines を持つ）
      * @private
      */
-    _drawQA(c, ox, qLabel, question, answer) {
+    _drawQA(c, ox, page) {
         const { PAGE_W } = this.C;
-        const cx       = ox + PAGE_W / 2;
-        const maxWidth = PAGE_W - 96; // 左右余白 48px ずつ
+        const cx = ox + PAGE_W / 2;
         c.textAlign    = 'center';
         c.textBaseline = 'middle';
+
+        // precompute 済みの行を使う（無ければその場で計算）
+        const qLines = page._qLines || (page.question ? this._wrapWith(this._QA_Q_FONT, page.question) : []);
+        const aLines = page._aLines || (page.answer   ? this._wrapWith(this._QA_A_FONT, page.answer)   : []);
 
         let y = 84; // 文字エリア上端
 
         // 質問番号ラベル
-        if (qLabel) {
-            c.font      = 'italic 16px Georgia, serif';
+        if (page.qLabel) {
+            c.font      = this._QA_Q_FONT;
             c.fillStyle = '#c9a961';
-            c.fillText(qLabel, cx, y);
+            c.fillText(page.qLabel, cx, y);
             y += 30;
         }
 
         // 質問文（落ち着いた色のイタリック）
-        if (question) {
-            c.font      = 'italic 16px Georgia, serif';
+        if (qLines.length) {
+            c.font      = this._QA_Q_FONT;
             c.fillStyle = '#6b5a42';
             const lineH = 26;
-            this._wrapText(c, question, maxWidth).forEach((ln) => {
-                c.fillText(ln, cx, y); y += lineH;
-            });
+            qLines.forEach((ln) => { c.fillText(ln, cx, y); y += lineH; });
         }
 
         // 金色の区切り線
-        if (question && answer) {
+        if (qLines.length && aLines.length) {
             y += 6;
             const gl = c.createLinearGradient(cx - 55, 0, cx + 55, 0);
             gl.addColorStop(0,   'rgba(201,169,97,0)');
@@ -510,14 +530,51 @@ class PageContentRenderer {
         }
 
         // 回答文（本文）
-        if (answer) {
-            c.font      = '15.5px Georgia, serif';
+        if (aLines.length) {
+            c.font      = this._QA_A_FONT;
             c.fillStyle = '#403838';
             const lineH = 27;
-            this._wrapText(c, answer, maxWidth).forEach((ln) => {
-                c.fillText(ln, cx, y); y += lineH;
-            });
+            aLines.forEach((ln) => { c.fillText(ln, cx, y); y += lineH; });
         }
+    }
+
+    /**
+     * 測定用の固定コンテキストで、指定フォントの折り返し行を計算する。
+     * @param {string} font
+     * @param {string} text
+     * @returns {string[]}
+     * @private
+     */
+    _wrapWith(font, text) {
+        this._measureCtx.font = font;
+        return this._wrapText(this._measureCtx, text, this._QA_MAXWIDTH);
+    }
+
+    /**
+     * 全 Q&A ページの質問・回答の折り返しを一度だけ計算し、各ページに
+     * _qLines / _aLines として覚えさせる。
+     *
+     * 呼び出すタイミング:
+     *   BookController.init() で、document.fonts.ready を待った後・最初の
+     *   描画より前に1回だけ。フォントが確定した状態で、かつ常に同じ
+     *   測定用コンテキストで計算するので、折り返しが全描画で一定になる。
+     */
+    precomputeWrapping() {
+        // 測定の精度を上げるため、使うフォントを一度ウォームアップする
+        // （生成直後のコンテキストは初回計測でフォールバックすることがある）。
+        [this._QA_Q_FONT, this._QA_A_FONT].forEach((f) => {
+            this._measureCtx.font = f;
+            this._measureCtx.measureText('漢字あいう');
+        });
+
+        this._spreadData.forEach((s) => {
+            ['left', 'right'].forEach((side) => {
+                const p = s[side];
+                if (!p) return;
+                if (p.question) p._qLines = this._wrapWith(this._QA_Q_FONT, p.question);
+                if (p.answer)   p._aLines = this._wrapWith(this._QA_A_FONT, p.answer);
+            });
+        });
     }
 
     /**

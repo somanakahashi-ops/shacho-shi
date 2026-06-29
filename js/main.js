@@ -47,9 +47,10 @@ $(document).ready(function () {
         pdfExportBtn:    $('#pdf-export-btn'),
         pdfExportStatus: $('#pdf-export-status'),
 
-        // 設定セクション（音ON/OFF・自動ページ送り）
-        soundToggle:  $('#sound-toggle'),
-        autoPlayBtn:  $('#auto-play-btn'),
+        // 設定セクション（音ON/OFF・写真の留め方・自動ページ送り）
+        soundToggle:      $('#sound-toggle'),
+        photoStyleSelect: $('#photo-style-select'),
+        autoPlayBtn:      $('#auto-play-btn'),
 
         // 読了プログレスバー
         progressBarFill: $('#progress-bar-fill')

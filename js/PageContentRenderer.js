@@ -432,7 +432,7 @@ class PageContentRenderer {
     }
 
     /**
-     * ページ上に画像を描画する（コンテンツへの上乗せレイヤー）
+     * 左ページの下半分に画像を「ポラロイド写真」風に重ねて描画する
      *
      * なぜ drawPage() に組み込まず分離しているか:
      *   spreads[]/pages[] の描画関数は BOOK_DATA から固定的に
@@ -441,23 +441,13 @@ class PageContentRenderer {
      *   描画パイプラインの最後に独立したレイヤーとして合成する方が
      *   責務が分かりやすく、BOOK_DATA 側の構造を変えずに済む。
      *
-     * レイアウト方針:
-     *   ページ上部に余白を残し、画像はページ中央〜下寄りに
-     *   アスペクト比を保ったまま収める（contain 方式）。
-     *   写真の周りに白枠（マット）を付けて「写真を本に貼った」
-     *   ような質感を出す。
-     *
-     * @param {CanvasRenderingContext2D} c
-     * @param {'left'|'right'} side  - ページの左右（描画 X 基点を決定）
-     * @param {HTMLImageElement} img - 描画する画像
-     */
-    /**
-     * 左ページの下半分に画像を重ねて描画する
-     *
-     * レイアウト方針:
-     *   ページの上半分（タイトル・本文）はそのまま見える状態を保ち、
-     *   下半分だけを画像エリアとして使う。アルバムのように
-     *   「文章の下に写真が添えられている」構成になる。
+     * デザイン方針（おしゃれな自分史アルバム風）:
+     *   ・上半分（タイトル・本文）はそのまま見える状態を保ち、
+     *     下半分だけを写真エリアとして使う。
+     *   ・写真は白いカード（ポラロイド）に載せ、下側だけ余白を広く取る。
+     *   ・カードは角丸＋柔らかい落ち影で「本に貼った1枚の写真」の質感に。
+     *   ・カードをほんの少し傾けて、台紙に無造作に貼ったような温かみを出す。
+     *   傾けてもページ外や綴じ目にはみ出さないよう、余白を多めに確保する。
      *
      * @param {CanvasRenderingContext2D} c
      * @param {'left'|'right'} side  - ページの左右（描画 X 基点を決定）
@@ -467,39 +457,95 @@ class PageContentRenderer {
         const { PAGE_W, PC_H } = this.C;
         const ox = (side === 'right') ? PAGE_W : 0;
 
-        // ページ下半分だけを画像の表示エリアとする。
-        // PC_H / 2 を起点にすることで、上半分（文字エリア）と
-        // 重ならないようにしている。
-        const margin   = 50;
-        const frameX   = ox + margin;
-        const frameY   = PC_H / 2 + 10; // 中央線よりわずかに下から開始
-        const frameW   = PAGE_W - margin * 2;
-        const frameH   = PC_H / 2 - margin - 10; // 下端にも margin 分の余白を残す
+        // ページ下半分を写真エリアとする（上半分の文字と重ねない）。
+        // 傾き分の余白を見込んで、表示枠は少し控えめに取る。
+        const margin = 58;
+        const frameX = ox + margin;
+        const frameY = PC_H / 2 + 14;
+        const frameW = PAGE_W - margin * 2;
+        const frameH = PC_H / 2 - margin - 14;
 
-        // アスペクト比を保って frame 内に収める（contain）
-        const scale = Math.min(frameW / img.width, frameH / img.height);
-        const drawW = img.width  * scale;
-        const drawH = img.height * scale;
-        const drawX = frameX + (frameW - drawW) / 2;
-        const drawY = frameY + (frameH - drawH) / 2;
+        // ── ポラロイドの余白（下だけ広い「顎」を作るのが味） ──
+        const padSide   = 16; // 左右
+        const padTop    = 16; // 上
+        const padBottom = 40; // 下（広め）
 
-        // ── 白いマット（写真を本に貼ったような枠） ──
-        const matPad = 12;
+        // 写真本体を、カードの余白を差し引いた内側領域に contain で収める
+        const innerW = frameW - padSide * 2;
+        const innerH = frameH - padTop - padBottom;
+        const scale  = Math.min(innerW / img.width, innerH / img.height);
+        const photoW = img.width  * scale;
+        const photoH = img.height * scale;
+
+        // カード外形のサイズと、表示枠内での中央配置
+        const cardW = photoW + padSide * 2;
+        const cardH = photoH + padTop + padBottom;
+        const cardX = frameX + (frameW - cardW) / 2;
+        const cardY = frameY + (frameH - cardH) / 2;
+
+        // 写真のカード内オフセット（左右中央・上余白の下）
+        const photoOffX = padSide;
+        const photoOffY = padTop;
+
+        // カード中心を基準に、ごくわずかに傾ける（無造作に貼った雰囲気）
+        const cx = cardX + cardW / 2;
+        const cy = cardY + cardH / 2;
+        const tilt = -2.2 * Math.PI / 180; // ラジアン
+
         c.save();
-        c.shadowColor = 'rgba(0,0,0,0.25)';
-        c.shadowBlur  = 16;
-        c.shadowOffsetY = 5;
-        c.fillStyle = '#ffffff';
-        c.fillRect(drawX - matPad, drawY - matPad, drawW + matPad * 2, drawH + matPad * 2);
+        c.translate(cx, cy);
+        c.rotate(tilt);
+        // 以降は「カード中心が原点」の座標系で描く
+        const left = -cardW / 2;
+        const top  = -cardH / 2;
+
+        // ── 1) 白いカード（角丸＋柔らかい落ち影） ──
+        c.save();
+        c.shadowColor   = 'rgba(40,30,20,0.30)';
+        c.shadowBlur    = 26;
+        c.shadowOffsetX = 2;
+        c.shadowOffsetY = 12;
+        c.fillStyle = '#fffdf8'; // ほんのり暖色の白（羊皮紙の本になじむ）
+        this._roundRectPath(c, left, top, cardW, cardH, 10);
+        c.fill();
         c.restore();
 
-        // ── 画像本体 ──
-        c.drawImage(img, drawX, drawY, drawW, drawH);
+        // ── 2) 写真の落ち込み（マット内側のごく薄い影で立体感） ──
+        const px = left + photoOffX;
+        const py = top + photoOffY;
+        c.save();
+        c.shadowColor   = 'rgba(0,0,0,0.18)';
+        c.shadowBlur    = 6;
+        c.shadowOffsetY = 2;
+        c.fillStyle = '#000';
+        c.fillRect(px, py, photoW, photoH);
+        c.restore();
 
-        // ── 縁の薄い枠線（マットと写真の境界を引き締める） ──
-        c.strokeStyle = 'rgba(0,0,0,0.08)';
+        // ── 3) 写真本体 ──
+        c.drawImage(img, px, py, photoW, photoH);
+
+        // ── 4) 写真の縁を引き締める極細の枠線 ──
+        c.strokeStyle = 'rgba(0,0,0,0.10)';
         c.lineWidth   = 1;
-        c.strokeRect(drawX, drawY, drawW, drawH);
+        c.strokeRect(px + 0.5, py + 0.5, photoW - 1, photoH - 1);
+
+        c.restore();
+    }
+
+    /**
+     * 角丸矩形のパスを現在のコンテキストに作る（fill/stroke する前に呼ぶ）。
+     * ctx.roundRect 非対応ブラウザでも動くよう arcTo で実装。
+     * @private
+     */
+    _roundRectPath(c, x, y, w, h, r) {
+        const rr = Math.min(r, w / 2, h / 2);
+        c.beginPath();
+        c.moveTo(x + rr, y);
+        c.arcTo(x + w, y,     x + w, y + h, rr);
+        c.arcTo(x + w, y + h, x,     y + h, rr);
+        c.arcTo(x,     y + h, x,     y,     rr);
+        c.arcTo(x,     y,     x + w, y,     rr);
+        c.closePath();
     }
 
     /**

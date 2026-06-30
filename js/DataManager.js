@@ -78,12 +78,36 @@ class DataManager {
 
     /* ── 文章タブ ──────────────────────────────────────── */
 
-    /** @private 文章編集フォームを組み立てる */
+    /** @private 文章編集フォームを「見開き（左右2ページ）」単位で組み立てる */
     _buildTextForm() {
         const $body = this.ui.bodyText;
         $body.empty();
 
-        const FIELDS = [
+        this.contentRenderer._spreadData.forEach((spread, sIdx) => {
+            const leftIdx  = sIdx * 2;
+            const rightIdx = sIdx * 2 + 1;
+
+            // 左右どちらにも編集できる文章が無ければ（空白の見開き）スキップ
+            const leftEditable  = this._isEditablePage(spread.left);
+            const rightEditable = this._isEditablePage(spread.right);
+            if (!leftEditable && !rightEditable) return;
+
+            const $card = $('<div>').addClass('dm-page dm-spread');
+            $('<div>').addClass('dm-page-head').text(`見開き ${sIdx + 1}`).appendTo($card);
+
+            // 実際の本と同じ「左ページ｜右ページ」の並びで2枚を横に置く
+            const $row = $('<div>').addClass('dm-spread-row');
+            $row.append(this._buildPageEditor(leftIdx,  spread.left,  '左ページ'));
+            $row.append(this._buildPageEditor(rightIdx, spread.right, '右ページ'));
+            $card.append($row);
+
+            $body.append($card);
+        });
+    }
+
+    /** 編集対象の文章フィールドの定義（左右ページ共通） @private */
+    _textFields() {
+        return [
             { key: 'chapter',  label: '章ラベル',   type: 'input'    },
             { key: 'title',    label: 'タイトル',   type: 'input'    },
             { key: 'qLabel',   label: '質問番号',   type: 'input'    },
@@ -91,54 +115,69 @@ class DataManager {
             { key: 'answer',   label: '回答',       type: 'textarea' },
             { key: 'body',     label: '本文',       type: 'textarea' }
         ];
+    }
 
-        this._eachPage().forEach(({ pageIndex, page }) => {
-            const hasAny = FIELDS.some(f => typeof page[f.key] === 'string');
-            if (!hasAny) return; // 空白ページ等はスキップ
+    /** @private 文章を持つページか（編集対象か）を判定 */
+    _isEditablePage(page) {
+        if (!page) return false;
+        return this._textFields().some(f => typeof page[f.key] === 'string');
+    }
 
-            const $card = $('<div>').addClass('dm-page');
-            const heading = (page.chapter ? page.chapter + '　' : '')
-                + (page.title || page.qLabel || `ページ ${pageIndex}`);
-            $('<div>').addClass('dm-page-head').text(`p.${page.pageNum || pageIndex}　${heading}`).appendTo($card);
+    /**
+     * 1ページ分の編集ブロック（見出し・プレビュー・入力欄）を作って返す。
+     * @param {number} pageIndex
+     * @param {Object} page
+     * @param {string} sideLabel - '左ページ' / '右ページ'
+     * @returns {JQuery}
+     * @private
+     */
+    _buildPageEditor(pageIndex, page, sideLabel) {
+        const $col = $('<div>').addClass('dm-spread-col');
+        $('<div>').addClass('dm-side-label').text(sideLabel).appendTo($col);
 
-            const $row = $('<div>').addClass('dm-page-row');
-            const $fields = $('<div>').addClass('dm-page-fields');
+        // 編集できる文章が無いページ（空白ページ）はその旨だけ表示
+        if (!this._isEditablePage(page)) {
+            $('<div>').addClass('dm-empty-page').text('（編集できる文章はありません）').appendTo($col);
+            return $col;
+        }
 
-            FIELDS.forEach((f) => {
-                if (typeof page[f.key] !== 'string') return;
-                const $field = $('<label>').addClass('dm-field');
-                $('<span>').addClass('dm-field-label').text(f.label).appendTo($field);
-                const $inp = (f.type === 'textarea') ? $('<textarea>') : $('<input type="text">');
-                $inp.addClass('dm-input')
-                    .val(page[f.key])
-                    .attr('data-page', pageIndex)
-                    .attr('data-field', f.key);
-                $field.append($inp);
-                $fields.append($field);
-            });
+        // プレビュー（上）
+        const $prevWrap = $('<div>').addClass('dm-preview-wrap');
+        $('<div>').addClass('dm-preview-cap').text('プレビュー').appendTo($prevWrap);
+        const $canvas = $('<canvas>')
+            .addClass('dm-preview')
+            .attr('width', this.C.PAGE_W)
+            .attr('height', this.C.PC_H);
+        $prevWrap.append($canvas);
+        $col.append($prevWrap);
 
-            // プレビュー
-            const $prevWrap = $('<div>').addClass('dm-preview-wrap');
-            $('<div>').addClass('dm-preview-cap').text('プレビュー').appendTo($prevWrap);
-            const $canvas = $('<canvas>')
-                .addClass('dm-preview')
-                .attr('width', this.C.PAGE_W)
-                .attr('height', this.C.PC_H);
-            $prevWrap.append($canvas);
-
-            $row.append($fields, $prevWrap);
-            $card.append($row);
-            $body.append($card);
-
-            const canvasEl = $canvas[0];
-            const renderPreview = () => this._renderPreview(canvasEl, pageIndex, $fields.find('.dm-input'));
-            let timer = null;
-            $fields.find('.dm-input').on('input', () => {
-                clearTimeout(timer);
-                timer = setTimeout(renderPreview, 120);
-            });
-            renderPreview();
+        // 入力欄（下）
+        const $fields = $('<div>').addClass('dm-page-fields');
+        this._textFields().forEach((f) => {
+            if (typeof page[f.key] !== 'string') return;
+            const $field = $('<label>').addClass('dm-field');
+            $('<span>').addClass('dm-field-label').text(f.label).appendTo($field);
+            const $inp = (f.type === 'textarea') ? $('<textarea>') : $('<input type="text">');
+            $inp.addClass('dm-input')
+                .val(page[f.key])
+                .attr('data-page', pageIndex)
+                .attr('data-field', f.key);
+            $field.append($inp);
+            $fields.append($field);
         });
+        $col.append($fields);
+
+        // 入力のたびにプレビューを更新（少し遅延）
+        const canvasEl = $canvas[0];
+        const renderPreview = () => this._renderPreview(canvasEl, pageIndex, $fields.find('.dm-input'));
+        let timer = null;
+        $fields.find('.dm-input').on('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(renderPreview, 120);
+        });
+        renderPreview();
+
+        return $col;
     }
 
     /**

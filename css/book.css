@@ -674,9 +674,37 @@ body.has-mobile-navbar {
 .dm-header-spacer { width: 96px; }
 .dm-header { gap: 10px; }
 
-/* 編集カードを「入力欄＋プレビュー」の横並びにする */
+/* 見開きカード内：左ページ｜右ページ を横に並べる */
+.dm-spread-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+.dm-spread-col {
+    flex: 1;
+    min-width: 0;
+    /* 左右ページの間に薄い仕切り（綴じ目のイメージ） */
+}
+.dm-spread-col + .dm-spread-col {
+    border-left: 1px dashed rgba(201,169,97,0.4);
+    padding-left: 20px;
+}
+.dm-side-label {
+    font-size: 0.8em;
+    color: #8a7a60;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+.dm-empty-page {
+    font-size: 0.82em;
+    color: #b0a896;
+    padding: 20px 0;
+}
+.dm-spread-col .dm-preview-wrap { margin-bottom: 12px; text-align: center; }
+
+/* 旧：1ページ単位の横並び（互換のため残す） */
 .dm-page-row { display: flex; gap: 16px; align-items: flex-start; }
-.dm-page-fields { flex: 1; min-width: 0; }
+.dm-page-fields { min-width: 0; }
 .dm-preview-wrap { flex-shrink: 0; text-align: center; }
 .dm-preview-cap { font-size: 0.72em; color: #8a7a60; margin-bottom: 4px; }
 .dm-preview {

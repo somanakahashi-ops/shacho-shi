@@ -674,6 +674,25 @@ body.has-mobile-navbar {
 .dm-header-spacer { width: 96px; }
 .dm-header { gap: 10px; }
 
+/* 表示する見開きを選ぶプルダウン（文章タブの上部に固定的に置く） */
+.dm-spread-picker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(201,169,97,0.25);
+}
+.dm-spread-picker-label {
+    font-size: 0.85em;
+    color: #6b5030;
+    font-weight: bold;
+}
+.dm-spread-select {
+    flex: 1;
+    max-width: 420px;
+}
+
 /* 見開きカード内：左ページ｜右ページ を横に並べる */
 .dm-spread-row {
     display: flex;

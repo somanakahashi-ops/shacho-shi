@@ -78,31 +78,68 @@ class DataManager {
 
     /* ── 文章タブ ──────────────────────────────────────── */
 
-    /** @private 文章編集フォームを「見開き（左右2ページ）」単位で組み立てる */
+    /** @private 文章編集フォームを「見開き（左右2ページ）」単位で組み立てる
+     *  一度に1見開きだけ表示し、プルダウンで表示する見開きを切り替える。 */
     _buildTextForm() {
         const $body = this.ui.bodyText;
         $body.empty();
 
+        // 編集できる文章を持つ見開きだけを対象にする
+        const editableSpreads = [];
         this.contentRenderer._spreadData.forEach((spread, sIdx) => {
-            const leftIdx  = sIdx * 2;
-            const rightIdx = sIdx * 2 + 1;
+            if (this._isEditablePage(spread.left) || this._isEditablePage(spread.right)) {
+                editableSpreads.push(sIdx);
+            }
+        });
 
-            // 左右どちらにも編集できる文章が無ければ（空白の見開き）スキップ
-            const leftEditable  = this._isEditablePage(spread.left);
-            const rightEditable = this._isEditablePage(spread.right);
-            if (!leftEditable && !rightEditable) return;
+        if (editableSpreads.length === 0) {
+            $('<p>').addClass('dm-note').text('編集できる文章がありません。').appendTo($body);
+            return;
+        }
+
+        // ── プルダウン（表示する見開きの選択） ──
+        const $picker = $('<div>').addClass('dm-spread-picker');
+        $('<span>').addClass('dm-spread-picker-label').text('表示する見開き').appendTo($picker);
+        const $select = $('<select>').addClass('toc-select dm-spread-select');
+        editableSpreads.forEach((sIdx) => {
+            const spread = this.contentRenderer._spreadData[sIdx];
+            $('<option>')
+                .attr('value', sIdx)
+                .text(`見開き ${sIdx + 1}${this._spreadSummary(spread)}`)
+                .appendTo($select);
+        });
+        $picker.append($select);
+        $body.append($picker);
+
+        // ── 選択中の見開きを描画する領域 ──
+        const $stage = $('<div>').addClass('dm-spread-stage');
+        $body.append($stage);
+
+        const renderSpread = (sIdx) => {
+            const spread = this.contentRenderer._spreadData[sIdx];
+            $stage.empty();
 
             const $card = $('<div>').addClass('dm-page dm-spread');
             $('<div>').addClass('dm-page-head').text(`見開き ${sIdx + 1}`).appendTo($card);
 
             // 実際の本と同じ「左ページ｜右ページ」の並びで2枚を横に置く
             const $row = $('<div>').addClass('dm-spread-row');
-            $row.append(this._buildPageEditor(leftIdx,  spread.left,  '左ページ'));
-            $row.append(this._buildPageEditor(rightIdx, spread.right, '右ページ'));
+            $row.append(this._buildPageEditor(sIdx * 2,     spread.left,  '左ページ'));
+            $row.append(this._buildPageEditor(sIdx * 2 + 1, spread.right, '右ページ'));
             $card.append($row);
 
-            $body.append($card);
-        });
+            $stage.append($card);
+        };
+
+        $select.on('change', () => renderSpread(Number($select.val())));
+        renderSpread(editableSpreads[0]);
+    }
+
+    /** @private プルダウンに出す見開きの簡単な見出し（章・タイトル） */
+    _spreadSummary(spread) {
+        const pick = (p) => p && (p.title || p.chapter || '');
+        const label = pick(spread.left) || pick(spread.right) || '';
+        return label ? `：${label}` : '';
     }
 
     /** 編集対象の文章フィールドの定義（左右ページ共通） @private */

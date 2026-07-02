@@ -199,6 +199,8 @@ class DataManager {
                 .val(page[f.key])
                 .attr('data-page', pageIndex)
                 .attr('data-field', f.key);
+            // 質問・回答・本文は文章量が多いので背の高い入力欄にする
+            if (f.type === 'textarea') $inp.addClass('dm-input-tall');
             $field.append($inp);
             $fields.append($field);
         });

@@ -773,7 +773,9 @@ body.has-mobile-navbar {
     border: 1px solid rgba(120,110,95,0.4); border-radius: 6px;
     padding: 7px 9px; background: #fff;
 }
-textarea.dm-input { min-height: 80px; resize: vertical; line-height: 1.5; }
+textarea.dm-input { min-height: 80px; resize: vertical; line-height: 1.6; }
+/* 質問・回答・本文など文章量の多い欄は、内容が一望できるよう背を高くする */
+textarea.dm-input.dm-input-tall { min-height: 160px; }
 
 /* 画像タブ */
 .dm-note { font-size: 0.82em; color: #8a7a60; margin-bottom: 12px; }

@@ -53,6 +53,7 @@ $(document).ready(function () {
         // 設定セクション（音ON/OFF・写真の留め方・自動ページ送り）
         soundToggle:      $('#sound-toggle'),
         photoStyleSelect: $('#photo-style-select'),
+        voiceSelect:      $('#tts-voice-select'),
         autoPlayBtn:      $('#auto-play-btn'),
 
         // 読了プログレスバー

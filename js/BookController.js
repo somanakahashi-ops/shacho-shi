@@ -62,7 +62,7 @@ class BookController {
         this.isMobile        = false;
         this._debugForceMode = null; // デバッグ用: 'mobile' | 'pc' | null
         this._ttsActive      = false; // 読み上げ（TTS）が動作中か
-        this._ttsVoiceURI    = null;  // 読み上げに使う音声のvoiceURI（未選択はnull=既定）
+        this._ttsVoicePref   = 'female'; // 読み上げの声の希望: 'female' | 'male' | 'auto'
         this.currentSpread   = 0; // PC モードの現在見開きインデックス
         this.currentPageIdx  = 0; // Mobile モードの現在ページインデックス
 
@@ -1043,8 +1043,9 @@ class BookController {
         const u = new SpeechSynthesisUtterance(text);
         u.lang = 'ja-JP';
         u.rate = 1.0;
-        // 選択された声（女性/男性など）があれば適用する
-        const voice = this._voiceByURI(this._ttsVoiceURI);
+        // 希望の声（女性/男性/自動）に対して、その環境で最も高品質な
+        // 日本語音声を選んで適用する
+        const voice = this._resolveVoice(this._ttsVoicePref);
         if (voice) u.voice = voice;
         u.onend = () => {
             if (!this._ttsActive) return;
@@ -1071,29 +1072,36 @@ class BookController {
         return true;
     }
 
-    /* ── 読み上げの声（女性／男性など）の選択 ─────────────────
-       Web Speech API が OS から提供する音声（voice）の中から、
-       日本語のものを一覧にしてユーザーが選べるようにする。
-       ・声の一覧はブラウザによっては非同期で届くため voiceschanged を監視。
-       ・保存が無ければ女性の声を既定として選ぶ（無ければ先頭）。
-       ・実際に「どの声を使うか」は _speakCurrent() が _ttsVoiceURI を見る。 */
+    /* ── 読み上げの声（女性／男性／自動）─────────────────────
+       ユーザーは「女性」「男性」「自動」だけを選ぶ。実際にどの音声を
+       使うかは、その環境（ブラウザ/OS）で使える日本語音声の中から
+       “日本語で高品質”とされるモデルを自動的に選んで割り当てる。
 
-    /** @private 起動時に声の一覧を用意し、選択の保存/復元を仕込む */
+       品質の見分け方（名前に含まれるキーワードで加点）:
+         Natural / Neural / Wavenet / Premium / Enhanced …高品質モデル
+       性別は音声名から推測する（Nanami・Kyoko＝女性、Keita・Otoya＝男性 等）。
+
+       ・声の一覧はブラウザによっては非同期で届くため voiceschanged を監視。
+       ・保存が無ければ「女性」を既定にする。
+       ・実際の割り当ては _speakCurrent() が _resolveVoice() 経由で行う。 */
+
+    /** @private 起動時に声の設定（女性/男性/自動）を用意する */
     _setupTTSVoices() {
         if (typeof window === 'undefined' || !window.speechSynthesis || !this.ui.voiceSelect) return;
 
-        // 保存済みの選択があれば先に反映（一覧構築前でも読み上げに使えるように）
-        this._ttsVoiceURI = this.settingsStore.getVoiceURI();
+        // 保存済みの希望があれば復元（無ければ既定の女性）
+        this._ttsVoicePref = this.settingsStore.getVoicePref() || 'female';
+        this.ui.voiceSelect.val(this._ttsVoicePref);
 
-        const populate = () => this._populateVoiceList();
-        populate();
+        const refresh = () => this._refreshVoiceLabels();
+        refresh();
         // Chrome 等では getVoices() が初回に空を返し、後から届く
-        window.speechSynthesis.onvoiceschanged = populate;
+        window.speechSynthesis.onvoiceschanged = refresh;
 
-        // ユーザーが声を切り替えたら保存する
+        // ユーザーが「女性/男性/自動」を切り替えたら保存する
         this.ui.voiceSelect.on('change', (e) => {
-            this._ttsVoiceURI = e.target.value || null;
-            this.settingsStore.setVoiceURI(this._ttsVoiceURI);
+            this._ttsVoicePref = e.target.value || 'auto';
+            this.settingsStore.setVoicePref(this._ttsVoicePref);
             if (this._ttsActive) {
                 // 読み上げ中なら、選んだ声で今のページから読み直す
                 window.speechSynthesis.cancel();
@@ -1102,45 +1110,89 @@ class BookController {
         });
     }
 
-    /** @private 日本語の声でセレクトを組み立て、既定（女性）を選ぶ */
-    _populateVoiceList() {
+    /**
+     * @private 各選択肢に「実際に使われる音声名」を添えて分かりやすくする。
+     * 例: 「女性（Nanami）」。使える音声が無ければ注記する。
+     */
+    _refreshVoiceLabels() {
         const $sel = this.ui.voiceSelect;
         if (!$sel) return;
-
-        const jaVoices = window.speechSynthesis.getVoices()
-            .filter((v) => /^ja(-|_|$)/i.test(v.lang));
+        const jaVoices = this._jaVoices();
         if (jaVoices.length === 0) return; // まだ届いていない → voiceschanged で再挑戦
 
-        $sel.empty();
-        jaVoices.forEach((v) => {
-            const g   = this._guessVoiceGender(v.name);
-            const tag = (g === 'female') ? '（女性）' : (g === 'male') ? '（男性）' : '';
-            $('<option>').attr('value', v.voiceURI).text(v.name + tag).appendTo($sel);
-        });
-
-        // 選ぶ声: 保存済み → 女性 → 先頭 の優先順
-        let chosen = jaVoices.find((v) => v.voiceURI === this._ttsVoiceURI);
-        if (!chosen) chosen = jaVoices.find((v) => this._guessVoiceGender(v.name) === 'female');
-        if (!chosen) chosen = jaVoices[0];
-
-        this._ttsVoiceURI = chosen.voiceURI;
-        $sel.val(chosen.voiceURI);
+        const label = (base, pref) => {
+            const v = this._resolveVoice(pref);
+            return v ? `${base}（${v.name}）` : `${base}（音声なし）`;
+        };
+        $sel.find('option[value="female"]').text(label('女性', 'female'));
+        $sel.find('option[value="male"]').text(label('男性', 'male'));
+        $sel.find('option[value=""]').text(label('自動', 'auto'));
     }
 
-    /** @private voiceURI から実際の音声オブジェクトを引く（無ければnull） */
-    _voiceByURI(uri) {
-        if (!uri || typeof window === 'undefined' || !window.speechSynthesis) return null;
-        return window.speechSynthesis.getVoices().find((v) => v.voiceURI === uri) || null;
+    /** @private この環境で使える日本語音声の一覧 */
+    _jaVoices() {
+        if (typeof window === 'undefined' || !window.speechSynthesis) return [];
+        return window.speechSynthesis.getVoices().filter((v) => /^ja(-|_|$)/i.test(v.lang));
+    }
+
+    /**
+     * @private 希望（'female'|'male'|'auto'）に対して、その環境で最も
+     * 高品質な日本語音声を選んで返す。無ければ null。
+     */
+    _resolveVoice(pref) {
+        const voices = this._jaVoices();
+        if (voices.length === 0) return null;
+
+        let best = null, bestScore = -Infinity;
+        voices.forEach((v) => {
+            const s = this._scoreVoice(v, pref);
+            if (s > bestScore) { bestScore = s; best = v; }
+        });
+        // pref が女性/男性で、性別の合う候補が全く無い場合（スコアが除外値）でも
+        // 何かは鳴らせるよう、先頭の音声を返す
+        return (bestScore <= -Infinity) ? voices[0] : best;
+    }
+
+    /**
+     * @private 音声に点数を付ける。高品質モデルほど高得点。
+     * 希望と反対の性別と分かる音声は候補から外す（-Infinity）。
+     */
+    _scoreVoice(v, pref) {
+        const n = (v.name || '').toLowerCase();
+        let score = 0;
+
+        // 高品質モデルのキーワードで加点（日本語で自然とされるもの）
+        const quality = [['natural', 100], ['neural', 90], ['wavenet', 85],
+                         ['premium', 80], ['enhanced', 60], ['online', 30]];
+        quality.forEach(([k, pts]) => { if (n.includes(k)) score += pts; });
+
+        // よく知られた高品質音声への軽い加点
+        const known = ['nanami', 'keita', 'kyoko', 'otoya', 'o-ren', 'haruka'];
+        if (known.some((k) => n.includes(k))) score += 20;
+
+        if (pref === 'female' || pref === 'male') {
+            const g = this._guessVoiceGender(v.name);
+            if (g === pref) score += 500;               // 希望の性別に一致：最優先
+            else if (g && g !== pref) return -Infinity;  // 反対の性別：除外
+            // g==='' （性別不明）は候補に残す（品質点のみで評価）
+        }
+        return score;
     }
 
     /** @private 声の名前から性別を推測する（確信が持てないときは ''） */
     _guessVoiceGender(name) {
         const n = (name || '').toLowerCase();
-        const female = ['kyoko', 'o-ren', 'oren', 'nanami', 'haruka', 'ayumi', 'sayaka',
-                        'mizuki', 'ichika', 'female', '女性', '女'];
-        const male   = ['otoya', 'hattori', 'ichiro', 'daichi', 'keita', 'male', '男性', '男'];
+        const female = ['nanami', 'ayumi', 'haruka', 'sayaka', 'kyoko', 'o-ren', 'oren',
+                        'mizuki', 'ichika', 'sara', 'female', '女性', '女'];
+        const male   = ['keita', 'ichiro', 'otoya', 'hattori', 'daichi', 'male', '男性', '男'];
         if (female.some((k) => n.includes(k))) return 'female';
         if (male.some((k) => n.includes(k)))   return 'male';
+
+        // Android/Google の命名規則（ja-JP-Standard/Wavenet/Neural2-A…）:
+        //   末尾 A・B は女性、C・D は男性、というのが Google の慣例。
+        const g = n.match(/ja[-_]jp[-_](?:standard|wavenet|neural2?)[-_]([a-d])/);
+        if (g) return (g[1] === 'a' || g[1] === 'b') ? 'female' : 'male';
+
         return '';
     }
 

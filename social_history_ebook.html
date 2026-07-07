@@ -77,10 +77,13 @@
         </label>
         <label class="toc-toggle-row">
             <span>読み上げの声</span>
-            <!-- 選択肢は JS（BookController._populateVoiceList）が、
-                 端末で使える日本語の音声（女性/男性など）から自動生成する -->
+            <!-- 「女性/男性/自動」を選ぶと、その端末で使える日本語音声のうち
+                 高品質なモデルを JS（BookController）が自動で割り当てる。
+                 各選択肢の（　）内に実際に使われる音声名が表示される。 -->
             <select id="tts-voice-select" class="toc-select">
-                <option value="">（自動）</option>
+                <option value="female">女性</option>
+                <option value="male">男性</option>
+                <option value="">自動</option>
             </select>
         </label>
         <button class="auto-play-btn" id="auto-play-btn">▶ 自動ページ送り</button>

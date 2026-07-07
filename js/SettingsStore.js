@@ -90,11 +90,13 @@ class SettingsStore {
     }
 
     /**
-     * 読み上げに使う音声の voiceURI を読み込む。
-     * 保存が無い（初回）／読込失敗時は null を返す（＝声を自動選択）。
+     * 読み上げの声の希望（'female' | 'male' | 'auto'）を読み込む。
+     * 実際にどの音声を使うかは環境ごとに BookController が決めるため、
+     * ここでは「女性/男性/自動」の希望だけを保存する。
+     * 保存が無い（初回）／読込失敗時は null を返す（呼び出し側で既定を決める）。
      * @returns {string|null}
      */
-    getVoiceURI() {
+    getVoicePref() {
         try {
             return localStorage.getItem(this.voiceKey);
         } catch (e) {
@@ -104,12 +106,12 @@ class SettingsStore {
     }
 
     /**
-     * 読み上げに使う音声の voiceURI を保存する。
-     * @param {string|null} voiceURI
+     * 読み上げの声の希望（'female' | 'male' | 'auto'）を保存する。
+     * @param {string|null} pref
      */
-    setVoiceURI(voiceURI) {
+    setVoicePref(pref) {
         try {
-            if (voiceURI) localStorage.setItem(this.voiceKey, voiceURI);
+            if (pref) localStorage.setItem(this.voiceKey, pref);
             else localStorage.removeItem(this.voiceKey);
         } catch (e) {
             console.warn('読み上げ音声設定の保存に失敗しました:', e);

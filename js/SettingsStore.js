@@ -27,9 +27,11 @@ class SettingsStore {
      * @param {string} [soundKey] - 音 ON/OFF を保存する localStorage キー
      * @param {string} [photoStyleKey] - 写真の留め方を保存する localStorage キー
      */
-    constructor(soundKey = 'ebook-sound-enabled', photoStyleKey = 'ebook-photo-style') {
+    constructor(soundKey = 'ebook-sound-enabled', photoStyleKey = 'ebook-photo-style',
+                voiceKey = 'ebook-tts-voice') {
         this.soundKey = soundKey;
         this.photoStyleKey = photoStyleKey;
+        this.voiceKey = voiceKey;
     }
 
     /**
@@ -84,6 +86,33 @@ class SettingsStore {
             localStorage.setItem(this.photoStyleKey, style);
         } catch (e) {
             console.warn('写真スタイルの保存に失敗しました:', e);
+        }
+    }
+
+    /**
+     * 読み上げに使う音声の voiceURI を読み込む。
+     * 保存が無い（初回）／読込失敗時は null を返す（＝声を自動選択）。
+     * @returns {string|null}
+     */
+    getVoiceURI() {
+        try {
+            return localStorage.getItem(this.voiceKey);
+        } catch (e) {
+            console.warn('読み上げ音声設定の読込に失敗しました:', e);
+            return null;
+        }
+    }
+
+    /**
+     * 読み上げに使う音声の voiceURI を保存する。
+     * @param {string|null} voiceURI
+     */
+    setVoiceURI(voiceURI) {
+        try {
+            if (voiceURI) localStorage.setItem(this.voiceKey, voiceURI);
+            else localStorage.removeItem(this.voiceKey);
+        } catch (e) {
+            console.warn('読み上げ音声設定の保存に失敗しました:', e);
         }
     }
 }

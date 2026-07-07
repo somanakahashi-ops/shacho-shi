@@ -75,6 +75,14 @@
                 <option value="tape">テープ</option>
             </select>
         </label>
+        <label class="toc-toggle-row">
+            <span>読み上げの声</span>
+            <!-- 選択肢は JS（BookController._populateVoiceList）が、
+                 端末で使える日本語の音声（女性/男性など）から自動生成する -->
+            <select id="tts-voice-select" class="toc-select">
+                <option value="">（自動）</option>
+            </select>
+        </label>
         <button class="auto-play-btn" id="auto-play-btn">▶ 自動ページ送り</button>
     </div>
 

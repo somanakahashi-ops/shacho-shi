@@ -63,6 +63,7 @@ class BookController {
         this._debugForceMode = null; // デバッグ用: 'mobile' | 'pc' | null
         this._ttsActive      = false; // 読み上げ（TTS）が動作中か
         this._ttsVoicePref   = 'female'; // 読み上げの声の希望: 'female' | 'male' | 'auto'
+        this._ttsAudio       = null;  // 事前生成MP3を再生中の Audio 要素（無ければnull）
         this.currentSpread   = 0; // PC モードの現在見開きインデックス
         this.currentPageIdx  = 0; // Mobile モードの現在ページインデックス
 
@@ -1016,14 +1017,29 @@ class BookController {
      */
     _stopTTS() {
         this._ttsActive = false;
+        this._stopSpeaking();
+        this.ui.ttsBtn.text('🔊 読み上げ');
+    }
+
+    /** @private 再生中の音声（事前生成MP3・ブラウザ音声の両方）を止める */
+    _stopSpeaking() {
         if (typeof window !== 'undefined' && window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }
-        this.ui.ttsBtn.text('🔊 読み上げ');
+        if (this._ttsAudio) {
+            this._ttsAudio.onended = null;
+            this._ttsAudio.onerror = null;
+            this._ttsAudio.pause();
+            this._ttsAudio = null;
+        }
     }
 
     /**
      * 現在の見開き／ページの文章を読み上げる。読み終えたら次へ進んで続ける。
+     *
+     * 読み上げの音源は2段構え:
+     *   1) 事前生成した高音質MP3（audio/tts/）が文章に一致すれば、それを再生。
+     *   2) 無ければ（＝文章を編集した等）ブラウザ内蔵の音声にフォールバック。
      * @private
      */
     _speakCurrent() {
@@ -1040,6 +1056,56 @@ class BookController {
             return;
         }
 
+        const onDone = () => {
+            if (!this._ttsActive) return;
+            if (!this._advanceForTTS()) { this._stopTTS(); return; }
+            // ページめくりの完了を待ってから次を読む
+            setTimeout(() => this._speakCurrent(), this.C.FLIP_MS + 200);
+        };
+
+        // 1) 事前生成MP3を試す
+        if (this._playPreGenerated(text, onDone)) return;
+        // 2) ブラウザ内蔵音声にフォールバック
+        this._speakWithBrowser(text, onDone);
+    }
+
+    /**
+     * 事前生成した高音質MP3が現在の文章にあれば再生する。
+     * @param {string} text 読み上げる文章
+     * @param {Function} onDone 再生完了時に呼ぶ
+     * @returns {boolean} 再生を開始できたら true
+     * @private
+     */
+    _playPreGenerated(text, onDone) {
+        if (typeof window === 'undefined' || typeof window.TTS_MANIFEST === 'undefined') return false;
+        if (typeof ttsHash !== 'function') return false;
+
+        const gender = (this._ttsVoicePref === 'male') ? 'male' : 'female'; // auto は女性
+        const set = window.TTS_MANIFEST[gender];
+        if (!set) return false;
+        const url = set[ttsHash(text)];
+        if (!url) return false;
+
+        const audio = new Audio(url);
+        this._ttsAudio = audio;
+        audio.onended = () => { this._ttsAudio = null; onDone(); };
+        audio.onerror = () => {
+            // MP3が読めない等はブラウザ音声へフォールバック
+            this._ttsAudio = null;
+            if (this._ttsActive) this._speakWithBrowser(text, onDone);
+        };
+        audio.play().catch(() => {
+            this._ttsAudio = null;
+            if (this._ttsActive) this._speakWithBrowser(text, onDone);
+        });
+        return true;
+    }
+
+    /**
+     * ブラウザ内蔵の音声合成で読み上げる（MP3が無いときのフォールバック）。
+     * @private
+     */
+    _speakWithBrowser(text, onDone) {
         const u = new SpeechSynthesisUtterance(text);
         u.lang = 'ja-JP';
         u.rate = 1.0;
@@ -1047,12 +1113,7 @@ class BookController {
         // 日本語音声を選んで適用する
         const voice = this._resolveVoice(this._ttsVoicePref);
         if (voice) u.voice = voice;
-        u.onend = () => {
-            if (!this._ttsActive) return;
-            if (!this._advanceForTTS()) { this._stopTTS(); return; }
-            // ページめくりの完了を待ってから次を読む
-            setTimeout(() => this._speakCurrent(), this.C.FLIP_MS + 200);
-        };
+        u.onend = onDone;
         u.onerror = () => { /* 中断時など。状態はトグルで管理しているので無視 */ };
         window.speechSynthesis.speak(u);
     }
@@ -1104,7 +1165,7 @@ class BookController {
             this.settingsStore.setVoicePref(this._ttsVoicePref);
             if (this._ttsActive) {
                 // 読み上げ中なら、選んだ声で今のページから読み直す
-                window.speechSynthesis.cancel();
+                this._stopSpeaking();
                 this._speakCurrent();
             }
         });

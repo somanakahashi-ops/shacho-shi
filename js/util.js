@@ -35,3 +35,27 @@ function loadImageFromSrc(src) {
         img.src = src;
     });
 }
+
+/**
+ * 文字列から短いハッシュ（FNV-1a 32bit、8桁の16進文字列）を作る。
+ *
+ * 用途: 事前生成した読み上げ音声（audio/tts/）のファイル名キーに使う。
+ *   同じ文章 → 同じハッシュ → 同じ音声ファイル、という対応にすることで、
+ *   「文章を編集したらハッシュが変わり、その部分だけ音声が無くなって
+ *    ブラウザ内蔵の声に自動フォールバックする」挙動を実現している。
+ *
+ * 重要: この計算は音声を生成する側（Node の /tmp/gen/extract.js）と
+ *   完全に一致していなければならない。charCodeAt は UTF-16 コード単位を
+ *   返すが、日本語は基本多言語面（BMP）に収まるため両者で一致する。
+ *
+ * @param {string} str
+ * @returns {string} 8桁の16進ハッシュ
+ */
+function ttsHash(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return ('00000000' + h.toString(16)).slice(-8);
+}

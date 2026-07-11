@@ -1,5 +1,7 @@
 book-data.json
 .claude/settings.local.json
 node_modules/
-package.json
-package-lock.json
+# docs/（静的サイト）直下の package.json はローカル検証用ツール（Playwright）
+# のためコミットしない。webapp/ の package.json は必要なので対象外にする。
+/docs/package.json
+/docs/package-lock.json

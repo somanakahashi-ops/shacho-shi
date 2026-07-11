@@ -1,0 +1,47 @@
+/* ================================================================
+   globals.css ── 自分史ブック（マルチユーザー版）の共通スタイル
+
+   静的版（docs/css/book.css）の世界観を引き継ぐ:
+   羊皮紙・セピア・ゴールドの落ち着いた配色 + 明朝/セリフ系の文字。
+   ================================================================ */
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+:root {
+  --paper: #fdfcf8;        /* 紙の色（右ページ） */
+  --paper-left: #faf8f2;   /* 紙の色（左ページ） */
+  --bg-1: #d6d0c4;         /* 背景グラデーション内側 */
+  --bg-2: #b0a898;         /* 背景グラデーション外側 */
+  --ink: #3a322a;          /* 基本の文字色 */
+  --ink-soft: #6b5030;     /* 茶色がかった文字色 */
+  --gold: #c9a961;         /* アクセント（ゴールド） */
+  --danger: #a8443a;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  min-height: 100%;
+}
+
+body {
+  color: var(--ink);
+  background: radial-gradient(ellipse at center, var(--bg-1) 0%, var(--bg-2) 100%);
+  background-attachment: fixed;
+  font-family: 'Georgia', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}

@@ -19,6 +19,7 @@ export interface BookPage {
 export interface Book {
     id: string;          // UUID（URLがそのまま共有キーになる）
     title: string;       // 本のタイトル（一覧表示用）
+    author: string;      // 作者名（本棚でユーザーを選ぶときの表示名）
     pages: BookPage[];   // ページ配列（先頭が表紙）
     created_at?: string;
     updated_at?: string;

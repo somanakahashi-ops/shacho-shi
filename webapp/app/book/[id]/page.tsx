@@ -1,11 +1,15 @@
 'use client';
 /* ================================================================
    閲覧画面（/book/[id]）
-   ── 見開き（左右2ページ）で本を読む。前へ/次へ、キーボード対応。
-   ── ページ移動時にはめくり音を鳴らす（🔊/🔇で切り替え・記憶）。
+   ── 見開き（左右2ページ）で本を読む。
 
-   静的版の BookController（PC見開きモード）に相当する最小構成。
-   ページめくりアニメーション・TTS・画像などは後続で移植する。
+   静的版 BookController から移植済みの機能:
+     ・前へ/次へ・キーボード（←→）
+     ・ページめくり音（🔊/🔇と目次内トグル、localStorageに記憶）
+     ・目次サイドバー（ハンバーガー→章ジャンプ）
+     ・読了プログレスバー（画面最上部の金の線）
+     ・しおり（前回読んでいた見開きを本ごとに記憶して再開）
+   未移植: めくりアニメーション・TTS・写真・PDF出力
    ================================================================ */
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -13,6 +17,9 @@ import { getSupabase } from '@/lib/supabase';
 import { Book, BookPage } from '@/lib/types';
 import { useFlipSound } from '@/lib/useFlipSound';
 import PageView from '@/components/PageView';
+import TocPanel, { buildToc } from '@/components/TocPanel';
+
+const bookmarkKey = (id: string) => `jibunshi-bookmark:${id}`;
 
 export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +27,7 @@ export default function ReaderPage() {
   const supabase = getSupabase();
   const [book, setBook] = useState<Book | null>(null);
   const [spread, setSpread] = useState(0);
+  const [tocOpen, setTocOpen] = useState(false);
   const [error, setError] = useState('');
   const sound = useFlipSound();
 
@@ -31,11 +39,24 @@ export default function ReaderPage() {
       .eq('id', id)
       .single()
       .then(({ data, error }) => {
-        if (error || !data) setError('本が見つかりませんでした。URLをご確認ください。');
-        else setBook(data as Book);
+        if (error || !data) {
+          setError('本が見つかりませんでした。URLをご確認ください。');
+          return;
+        }
+        setBook(data as Book);
+        // しおり: 前回の位置から再開
+        const saved = Number(localStorage.getItem(bookmarkKey(id)) ?? '0');
+        const count = Math.ceil(((data as Book).pages.length || 1) / 2);
+        if (saved > 0 && saved < count) setSpread(saved);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // しおり: 位置が変わるたび保存
+  useEffect(() => {
+    if (!id || !book) return;
+    try { localStorage.setItem(bookmarkKey(id), String(spread)); } catch { /* 保存不可でも継続 */ }
+  }, [spread, id, book]);
 
   // 2ページずつ見開きにまとめる（静的版 book-data.js と同じ考え方）
   const pages: (BookPage | null)[] = book ? [...book.pages] : [];
@@ -54,6 +75,18 @@ export default function ReaderPage() {
       });
     },
     // sound.play は ref 経由で常に最新設定を見るため依存に入れなくてよい
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [spreadCount]
+  );
+
+  const jumpTo = useCallback(
+    (target: number) => {
+      setSpread((s) => {
+        const next = Math.min(Math.max(target, 0), spreadCount - 1);
+        if (next !== s) sound.play();
+        return next;
+      });
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [spreadCount]
   );
@@ -87,11 +120,33 @@ export default function ReaderPage() {
   }
 
   const pageNumOf = (idx: number) => (idx === 0 ? 'Cover' : String(idx));
+  const progress = spreadCount > 1 ? (spread / (spreadCount - 1)) * 100 : 100;
 
   return (
     <div className="reader-shell">
+      {/* 読了プログレスバー */}
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: `${progress}%` }} />
+      </div>
+
+      {/* 目次サイドバー */}
+      <TocPanel
+        open={tocOpen}
+        onClose={() => setTocOpen(false)}
+        toc={buildToc(book.pages)}
+        currentSpread={spread}
+        onJump={jumpTo}
+        soundEnabled={sound.enabled}
+        onToggleSound={sound.setEnabled}
+      />
+
       <div className="reader-top">
-        <button className="mini-link" onClick={() => router.push('/')}>← ホーム</button>
+        <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="toc-toggle-btn" onClick={() => setTocOpen(true)} aria-label="目次を開く">
+            <span></span><span></span><span></span>
+          </button>
+          <button className="mini-link" onClick={() => router.push('/')}>← ホーム</button>
+        </span>
         <span className="reader-book-title">{book.title}</span>
         <span style={{ display: 'flex', gap: 8 }}>
           <button

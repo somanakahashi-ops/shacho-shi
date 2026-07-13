@@ -205,6 +205,126 @@
   .page-hide-mobile { display: none; }
 }
 
+/* ── 目次サイドバー（静的版 toc-panel の移植） ── */
+.toc-toggle-btn {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  background: rgba(253, 252, 248, 0.92);
+  border: 1px solid rgba(201, 169, 97, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.toc-toggle-btn span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--ink-soft);
+  border-radius: 1px;
+}
+
+.toc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 250;
+}
+.toc-overlay.show { opacity: 1; pointer-events: auto; }
+
+.toc-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 300px;
+  max-width: 85vw;
+  height: 100%;
+  background: linear-gradient(180deg, var(--paper) 0%, #f5f1e8 100%);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  z-index: 300;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.toc-panel.open { transform: translateX(0); }
+
+.toc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(201, 169, 97, 0.35);
+}
+.toc-title { color: var(--ink-soft); letter-spacing: 4px; font-weight: bold; }
+.toc-close {
+  border: none;
+  background: none;
+  font-size: 1.3em;
+  color: var(--ink-soft);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.toc-list { list-style: none; flex: 1; padding: 10px 0; }
+.toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 20px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.toc-item:hover { background: rgba(201, 169, 97, 0.1); }
+.toc-item.active {
+  border-left-color: var(--gold);
+  background: rgba(201, 169, 97, 0.14);
+  font-weight: bold;
+}
+
+.toc-settings {
+  padding: 14px 20px 22px;
+  border-top: 1px solid rgba(201, 169, 97, 0.35);
+}
+.toc-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.88em;
+  color: var(--ink-soft);
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+/* ── 読了プログレスバー ── */
+.progress-track {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.08);
+  z-index: 400;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #b8964a);
+  transition: width 0.3s ease;
+}
+
 /* ── 編集画面 ── */
 .editor-card {
   background: var(--paper);

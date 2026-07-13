@@ -42,14 +42,21 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [author, setAuthor] = useState('');
+
   async function createBook() {
     if (!supabase) return;
+    const name = author.trim();
+    if (!name) {
+      setError('お名前（作者名）を入力してください');
+      return;
+    }
     setBusy(true);
     setError('');
-    const title = 'わたしの自分史';
+    const title = `${name}の自分史`;
     const { data, error } = await supabase
       .from('books')
-      .insert({ title, pages: createDefaultPages(title) })
+      .insert({ title, author: name, pages: createDefaultPages(title) })
       .select('id')
       .single();
     if (error || !data) {
@@ -80,10 +87,23 @@ export default function HomePage() {
       ) : (
         <>
           <div className="center">
-            <button className="btn btn-primary" onClick={createBook} disabled={busy}>
-              {busy ? '作成中…' : '＋ 新しい本を作る'}
-            </button>
+            <div className="create-row">
+              <input
+                className="input create-name"
+                type="text"
+                placeholder="お名前（例: 山田 太郎）"
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                maxLength={30}
+              />
+              <button className="btn btn-primary" onClick={createBook} disabled={busy}>
+                {busy ? '作成中…' : '＋ 新しい本を作る'}
+              </button>
+            </div>
             <p className="status-line err">{error}</p>
+            <button className="mini-link" onClick={() => router.push('/shelf')}>
+              📚 みんなの本棚を見る
+            </button>
           </div>
 
           {books.length > 0 && (

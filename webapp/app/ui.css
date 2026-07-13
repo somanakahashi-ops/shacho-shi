@@ -75,6 +75,59 @@
   font-size: 0.9em;
 }
 
+/* ホーム: 名前入力＋作成ボタン */
+.create-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: stretch;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.create-name {
+  max-width: 300px;
+  font-size: 1em;
+}
+
+/* ── みんなの本棚: 作者（ユーザー）選択 ── */
+.author-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+.author-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 14px 18px;
+  background: var(--paper);
+  border: 1px solid rgba(201, 169, 97, 0.4);
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  font-family: inherit;
+}
+.author-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+}
+.author-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #b8964a);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4em;
+  font-weight: bold;
+}
+.author-name { color: var(--ink); font-size: 0.95em; }
+.author-count { color: #8a7a60; font-size: 0.75em; }
+
 .center { text-align: center; }
 .mt-lg { margin-top: 36px; }
 .status-line { margin-top: 14px; font-size: 0.85em; color: #6b8a50; min-height: 1.4em; }
@@ -197,12 +250,181 @@
 }
 .mini-link:hover { background: rgba(201, 169, 97, 0.12); }
 
+/* ── ページめくりアニメーション（CSS 3D） ──
+   紙を1枚だけ重ねて回転させる。
+   進む: 右半分の紙が左へ倒れる（表=今の右ページ、裏=次の左ページ）
+   戻る: 左半分の紙が右へ倒れる（表=今の左ページ、裏=前の右ページ） */
+.spread { position: relative; perspective: 2200px; }
+
+.flip-sheet {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  transform-style: preserve-3d;
+  z-index: 5;
+  will-change: transform;
+}
+.flip-sheet.fwd {
+  right: 0;
+  transform-origin: left center;
+  animation: flip-fwd 0.85s cubic-bezier(0.45, 0.05, 0.35, 1) forwards;
+}
+.flip-sheet.bwd {
+  left: 0;
+  transform-origin: right center;
+  animation: flip-bwd 0.85s cubic-bezier(0.45, 0.05, 0.35, 1) forwards;
+}
+@keyframes flip-fwd { from { transform: rotateY(0deg); }  to { transform: rotateY(-180deg); } }
+@keyframes flip-bwd { from { transform: rotateY(0deg); }  to { transform: rotateY(180deg); } }
+
+.flip-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+  display: flex;
+}
+.flip-face .page { flex: 1; height: 100%; }
+.flip-back { transform: rotateY(180deg); }
+
+/* めくり中の紙に落ちる淡い影（立体感） */
+.flip-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(0,0,0,0.10), transparent 30%, transparent 70%, rgba(0,0,0,0.06));
+}
+
 /* スマホ: 見開きをやめて1ページ表示 */
 @media (max-width: 700px) {
-  .spread { flex-direction: column; min-height: unset; }
+  .spread { flex-direction: column; min-height: unset; perspective: none; }
   .page { min-height: 420px; padding: 36px 24px 32px; }
   .page-left { border-right: none; border-bottom: 1px solid rgba(0,0,0,0.08); }
   .page-hide-mobile { display: none; }
+  .flip-sheet { display: none; } /* スマホはアニメーションなしで即切替 */
+}
+
+/* ── 目次サイドバー（静的版 toc-panel の移植） ── */
+.toc-toggle-btn {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  background: rgba(253, 252, 248, 0.92);
+  border: 1px solid rgba(201, 169, 97, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.toc-toggle-btn span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--ink-soft);
+  border-radius: 1px;
+}
+
+.toc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 250;
+}
+.toc-overlay.show { opacity: 1; pointer-events: auto; }
+
+.toc-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 300px;
+  max-width: 85vw;
+  height: 100%;
+  background: linear-gradient(180deg, var(--paper) 0%, #f5f1e8 100%);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  z-index: 300;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.toc-panel.open { transform: translateX(0); }
+
+.toc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(201, 169, 97, 0.35);
+}
+.toc-title { color: var(--ink-soft); letter-spacing: 4px; font-weight: bold; }
+.toc-close {
+  border: none;
+  background: none;
+  font-size: 1.3em;
+  color: var(--ink-soft);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.toc-list { list-style: none; flex: 1; padding: 10px 0; }
+.toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 20px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.toc-item:hover { background: rgba(201, 169, 97, 0.1); }
+.toc-item.active {
+  border-left-color: var(--gold);
+  background: rgba(201, 169, 97, 0.14);
+  font-weight: bold;
+}
+
+.toc-settings {
+  padding: 14px 20px 22px;
+  border-top: 1px solid rgba(201, 169, 97, 0.35);
+}
+.toc-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.88em;
+  color: var(--ink-soft);
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+/* ── 読了プログレスバー ── */
+.progress-track {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.08);
+  z-index: 400;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #b8964a);
+  transition: width 0.3s ease;
 }
 
 /* ── 目次サイドバー（静的版 toc-panel の移植） ── */

@@ -2,14 +2,16 @@
 /* ================================================================
    閲覧画面（/book/[id]）
    ── 見開き（左右2ページ）で本を読む。前へ/次へ、キーボード対応。
+   ── ページ移動時にはめくり音を鳴らす（🔊/🔇で切り替え・記憶）。
 
    静的版の BookController（PC見開きモード）に相当する最小構成。
    ページめくりアニメーション・TTS・画像などは後続で移植する。
    ================================================================ */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getSupabase } from '@/lib/supabase';
 import { Book, BookPage } from '@/lib/types';
+import { useFlipSound } from '@/lib/useFlipSound';
 import PageView from '@/components/PageView';
 
 export default function ReaderPage() {
@@ -19,6 +21,7 @@ export default function ReaderPage() {
   const [book, setBook] = useState<Book | null>(null);
   const [spread, setSpread] = useState(0);
   const [error, setError] = useState('');
+  const sound = useFlipSound();
 
   useEffect(() => {
     if (!supabase || !id) return;
@@ -41,15 +44,29 @@ export default function ReaderPage() {
   const left = pages[spread * 2] ?? null;
   const right = pages[spread * 2 + 1] ?? null;
 
+  // ページ移動（範囲内で実際に動いたときだけ、めくり音を鳴らす）
+  const goTo = useCallback(
+    (delta: number) => {
+      setSpread((s) => {
+        const next = Math.min(Math.max(s + delta, 0), spreadCount - 1);
+        if (next !== s) sound.play();
+        return next;
+      });
+    },
+    // sound.play は ref 経由で常に最新設定を見るため依存に入れなくてよい
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [spreadCount]
+  );
+
   // キーボード操作（← →）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') setSpread((s) => Math.min(s + 1, spreadCount - 1));
-      if (e.key === 'ArrowLeft') setSpread((s) => Math.max(s - 1, 0));
+      if (e.key === 'ArrowRight') goTo(1);
+      if (e.key === 'ArrowLeft') goTo(-1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [spreadCount]);
+  }, [goTo]);
 
   if (!supabase) {
     return (
@@ -76,9 +93,19 @@ export default function ReaderPage() {
       <div className="reader-top">
         <button className="mini-link" onClick={() => router.push('/')}>← ホーム</button>
         <span className="reader-book-title">{book.title}</span>
-        <button className="mini-link" onClick={() => router.push(`/book/${id}/manage`)}>
-          ✎ 編集
-        </button>
+        <span style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="mini-link"
+            onClick={() => sound.setEnabled(!sound.enabled)}
+            aria-label="ページめくり音の切り替え"
+            title="ページめくり音"
+          >
+            {sound.enabled ? '🔊' : '🔇'}
+          </button>
+          <button className="mini-link" onClick={() => router.push(`/book/${id}/manage`)}>
+            ✎ 編集
+          </button>
+        </span>
       </div>
 
       <div className="spread">
@@ -87,14 +114,10 @@ export default function ReaderPage() {
       </div>
 
       <div className="reader-controls">
-        <button className="btn" onClick={() => setSpread((s) => Math.max(s - 1, 0))} disabled={spread === 0}>
+        <button className="btn" onClick={() => goTo(-1)} disabled={spread === 0}>
           ← 前へ
         </button>
-        <button
-          className="btn"
-          onClick={() => setSpread((s) => Math.min(s + 1, spreadCount - 1))}
-          disabled={spread >= spreadCount - 1}
-        >
+        <button className="btn" onClick={() => goTo(1)} disabled={spread >= spreadCount - 1}>
           次へ →
         </button>
       </div>

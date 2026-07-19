@@ -284,6 +284,99 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
 
   useImperativeHandle(ref, () => ({ goNext, goPrev, jumpToSpread }));
 
+  // ── スワイプ（ドラッグ）でのページめくり。スマホのみ。──
+  // 静的版 BookController._bindSwipeGesture と同じロジック:
+  //   touchstart → beginDrag()
+  //   touchmove  → updateDragProgress(deltaX)（rAFで1フレームに間引く）
+  //   touchend   → endDrag() で確定/キャンセルを判定し、残りを自動補完
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let startX: number | null = null;
+    let dragActive = false;
+    let pendingDeltaX: number | null = null;
+    let renderScheduled = false;
+
+    const scheduleRender = (deltaX: number) => {
+      pendingDeltaX = deltaX;
+      if (renderScheduled) return;
+      renderScheduled = true;
+      requestAnimationFrame(() => {
+        renderScheduled = false;
+        const eng = engineRef.current;
+        if (pendingDeltaX === null || !dragActive || !eng) return;
+        eng.animator.updateDragProgress(pendingDeltaX);
+        render();
+      });
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      const eng = engineRef.current;
+      // スマホのみ対応（PCはボタン/キーボードでの操作のまま）
+      if (!eng || !isMobileRef.current) return;
+      const started = eng.animator.beginDrag(
+        eng.contentRenderer.pages,
+        currentPageIdxRef.current,
+        true
+      );
+      if (!started) return;
+      startX = e.touches[0].clientX;
+      dragActive = true;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!dragActive || startX === null) return;
+      e.preventDefault(); // ページ全体のスクロールを止める
+      scheduleRender(e.touches[0].clientX - startX);
+    };
+
+    const onTouchEnd = () => {
+      const eng = engineRef.current;
+      if (!dragActive || !eng) return;
+
+      if (pendingDeltaX !== null) {
+        eng.animator.updateDragProgress(pendingDeltaX);
+        pendingDeltaX = null;
+      }
+      dragActive = false;
+      startX = null;
+
+      eng.animator.endDrag(
+        render,
+        (finishedIdx: number) => {
+          // 確定: ページ送りが実際に起きた
+          currentPageIdxRef.current = finishedIdx;
+          currentSpreadRef.current = Math.floor(finishedIdx / 2);
+          render();
+          notify();
+        },
+        () => {
+          // キャンセル: 位置は変わらないが元の見た目に戻すため再描画
+          render();
+          notify();
+        },
+        () => {
+          // 確定が決まった瞬間（残りの自動補完アニメーションの前）に
+          // 呼ばれる。ボタン操作と揃うタイミングでめくり音を鳴らす。
+          onFlipStart?.();
+        }
+      );
+    };
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd);
+    canvas.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return <canvas ref={canvasRef} className="book-canvas" />;
 });
 

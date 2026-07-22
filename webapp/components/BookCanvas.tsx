@@ -28,6 +28,7 @@ import { BookRenderer } from '@/lib/engine/BookRenderer';
 import { BookAnimator } from '@/lib/engine/BookAnimator';
 import { loadImageFromSrc } from '@/lib/engine/util';
 import { buildSpreadData } from '@/lib/buildSpreads';
+import { exportBookToPdf } from '@/lib/pdfExport';
 import { BookPage } from '@/lib/types';
 
 export interface BookCanvasState {
@@ -44,6 +45,8 @@ export interface BookCanvasHandle {
   jumpToSpread: (spreadIndex: number) => void;
   /** 現在表示中のページ/見開きの読み上げテキストを返す（TTS用） */
   getReadText: () => string;
+  /** 全ページをPDFに変換してダウンロードする */
+  exportPdf: (title: string, onProgress?: (current: number, total: number) => void) => Promise<void>;
 }
 
 interface Props {
@@ -330,7 +333,13 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
       : eng.contentRenderer.getSpreadReadText(currentSpreadRef.current);
   };
 
-  useImperativeHandle(ref, () => ({ goNext, goPrev, jumpToSpread, getReadText }));
+  const exportPdf = async (title: string, onProgress?: (current: number, total: number) => void) => {
+    const eng = engineRef.current;
+    if (!eng) return;
+    await exportBookToPdf(eng.contentRenderer, title, onProgress);
+  };
+
+  useImperativeHandle(ref, () => ({ goNext, goPrev, jumpToSpread, getReadText, exportPdf }));
 
   // ── スワイプ（ドラッグ）でのページめくり。スマホのみ。──
   // 静的版 BookController._bindSwipeGesture と同じロジック:

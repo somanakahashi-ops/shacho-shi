@@ -40,6 +40,9 @@ export default function TocPanel({
     onPhotoStyleChange,
     voicePref,
     onVoicePrefChange,
+    onExportPdf,
+    pdfBusy,
+    pdfStatus,
 }: {
     open: boolean;
     onClose: () => void;
@@ -52,6 +55,9 @@ export default function TocPanel({
     onPhotoStyleChange: (style: string) => void;
     voicePref: string;
     onVoicePrefChange: (pref: string) => void;
+    onExportPdf: () => void;
+    pdfBusy: boolean;
+    pdfStatus: string;
 }) {
     return (
         <>
@@ -107,6 +113,12 @@ export default function TocPanel({
                             <option value="auto">自動</option>
                         </select>
                     </label>
+                </div>
+                <div className="toc-footer">
+                    <button className="btn btn-primary toc-pdf-btn" onClick={onExportPdf} disabled={pdfBusy}>
+                        📄 PDFをダウンロード
+                    </button>
+                    {pdfStatus && <p className="toc-pdf-status">{pdfStatus}</p>}
                 </div>
             </nav>
         </>

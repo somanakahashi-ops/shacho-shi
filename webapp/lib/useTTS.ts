@@ -104,5 +104,5 @@ export function useTTS({ getText, advance, atEnd, flipDelayMs }: Options) {
     // アンマウント時に読み上げを止める
     useEffect(() => () => { window.speechSynthesis?.cancel(); }, []);
 
-    return { active, toggle, voicePref, setVoicePref };
+    return { active, toggle, stop, voicePref, setVoicePref };
 }

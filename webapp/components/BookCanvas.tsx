@@ -14,6 +14,8 @@
      ・goNext/goPrev/jumpToSpread を ref 経由で親に公開する
      ・状態が変わるたび onStateChange で親（カウンター・進捗バー・
        目次のハイライト）に通知する
+     ・ドラッグ（スマホはタッチ、PC/スマホ問わずマウス）でのページめくり
+     ・目次から遠くへジャンプするときのパラパラめくり（リフル）演出
    ================================================================ */
 import {
   forwardRef,
@@ -310,18 +312,139 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
     }
   };
 
-  /** 目次からのジャンプ（アニメーションなしで即座に切り替え） */
+  /**
+   * 複数ページ/見開きを「ひとまとめに」めくるパラパラめくり（リフル）。
+   * 静的版 BookController._runFlutter の移植。常に「小さいインデックス
+   * lo → 大きいインデックス hi」へ進む順方向リフルとして実装し、
+   * 後ろへ戻るときは時間を逆回しして同じロジックを再利用する。
+   */
+  const runFlutter = (targetIdx: number): Promise<void> => {
+    return new Promise((resolve) => {
+      const eng = engineRef.current;
+      if (!eng) { resolve(); return; }
+      const isMobile = isMobileRef.current;
+      const startIdx = isMobile ? currentPageIdxRef.current : currentSpreadRef.current;
+      if (targetIdx === startIdx) { resolve(); return; }
+
+      const forward = targetIdx > startIdx;
+      const loIdx = Math.min(startIdx, targetIdx);
+      const hiIdx = Math.max(startIdx, targetIdx);
+      const N = hiIdx - loIdx;
+      const cr = eng.contentRenderer;
+
+      const fronts: HTMLCanvasElement[] = [];
+      const backs: HTMLCanvasElement[] = [];
+      for (let k = 0; k < N; k++) {
+        const i = loIdx + k;
+        if (isMobile) {
+          const pg = cr.pages[i];
+          fronts.push(cr.preRenderPage(pg.fn, pg.isRight));
+        } else {
+          fronts.push(cr.preRenderPage(cr.spreads[i].right, true));
+          backs.push(cr.preRenderPage(cr.spreads[i + 1].left, false));
+        }
+      }
+
+      const C = BOOK_CONST;
+      let sheetMs = C.FLUTTER_SHEET_MS;
+      let stagger = C.FLUTTER_STAGGER_MS;
+      let total = stagger * (N - 1) + sheetMs;
+      if (total > C.FLUTTER_MAX_MS) {
+        const s = C.FLUTTER_MAX_MS / total;
+        sheetMs *= s; stagger *= s; total = C.FLUTTER_MAX_MS;
+      }
+
+      eng.animator.state.isAnimating = true;
+      const t0 = performance.now();
+      onFlipStart?.();
+      let soundsPlayed = 1;
+      const soundCap = Math.min(N, 8);
+
+      const frame = (now: number) => {
+        const elapsed = Math.min(now - t0, total);
+        const tau = forward ? elapsed : total - elapsed;
+        const tk = (k: number) => {
+          const v = (tau - k * stagger) / sheetMs;
+          return v < 0 ? 0 : v > 1 ? 1 : v;
+        };
+
+        let landedMax = -1;
+        for (let k = N - 1; k >= 0; k--) { if (tk(k) >= 1) { landedMax = k; break; } }
+        let m = -1;
+        for (let k = 0; k < N; k++) { if (tk(k) <= 0) { m = k; break; } }
+
+        if (isMobile) {
+          const basePage = cr.preRenderPage(cr.pages[hiIdx].fn, cr.pages[hiIdx].isRight);
+          const pileTop = m >= 0 ? cr.preRenderPage(cr.pages[loIdx + m].fn, cr.pages[loIdx + m].isRight) : null;
+          const curls: { t: number; front: HTMLCanvasElement }[] = [];
+          for (let k = N - 1; k >= 0; k--) {
+            const t = tk(k);
+            if (t > 0 && t < 1) curls.push({ t, front: fronts[k] });
+          }
+          eng.bookRenderer.renderFlutterMobile(basePage, pileTop, curls);
+        } else {
+          const spreads = cr.spreads;
+          const leftBaseImg = cr.preRenderPage(spreads[loIdx + landedMax + 1].left, false);
+          const rightBaseImg = cr.preRenderPage(spreads[hiIdx].right, true);
+          const pileTopImg = m >= 0 ? cr.preRenderPage(spreads[loIdx + m].right, true) : null;
+          const curls: { t: number; front: HTMLCanvasElement; back: HTMLCanvasElement; reverse: boolean }[] = [];
+          for (let k = 0; k < N; k++) {
+            const t = tk(k);
+            if (t > 0 && t < 1) curls.push({ t, front: fronts[k], back: backs[k], reverse: false });
+          }
+          curls.sort((a, b) => Math.abs(b.t - 0.5) - Math.abs(a.t - 0.5));
+          eng.bookRenderer.renderFlutterPC(leftBaseImg, rightBaseImg, pileTopImg, curls);
+        }
+
+        const wantSounds = Math.min(soundCap, 1 + Math.floor((elapsed / total) * soundCap));
+        while (soundsPlayed < wantSounds) { onFlipStart?.(); soundsPlayed++; }
+
+        if (elapsed >= total) {
+          eng.animator.state.isAnimating = false;
+          currentPageIdxRef.current = isMobile ? targetIdx : targetIdx * 2;
+          currentSpreadRef.current = isMobile ? Math.floor(targetIdx / 2) : targetIdx;
+          render();
+          notify();
+          resolve();
+          return;
+        }
+        requestAnimationFrame(frame);
+      };
+
+      requestAnimationFrame(frame);
+    });
+  };
+
+  /**
+   * 目次からのジャンプ。近ければ即切り替え、FLUTTER_THRESHOLD以上
+   * 離れていればパラパラめくり（リフル）でひとまとめにめくる。
+   */
   const jumpToSpread = (spreadIndex: number) => {
     const eng = engineRef.current;
     if (!eng || eng.animator.state.isAnimating || eng.animator.state.dragging) return;
     const count = eng.contentRenderer.spreads.length;
     const next = Math.min(Math.max(spreadIndex, 0), count - 1);
-    if (next === currentSpreadRef.current) return;
-    onFlipStart?.();
-    currentSpreadRef.current = next;
-    currentPageIdxRef.current = next * 2;
-    render();
-    notify();
+
+    if (isMobileRef.current) {
+      const targetPageIdx = next * 2;
+      const distance = Math.abs(targetPageIdx - currentPageIdxRef.current);
+      if (distance === 0) return;
+      if (distance >= BOOK_CONST.FLUTTER_THRESHOLD) { runFlutter(targetPageIdx); return; }
+      onFlipStart?.();
+      currentPageIdxRef.current = targetPageIdx;
+      currentSpreadRef.current = next;
+      render();
+      notify();
+    } else {
+      const distance = Math.abs(next - currentSpreadRef.current);
+      if (distance === 0) return;
+      if (distance >= BOOK_CONST.FLUTTER_THRESHOLD) { runFlutter(next); return; }
+      onFlipStart?.();
+      currentSpreadRef.current = next;
+      currentPageIdxRef.current = next * 2;
+      render();
+      notify();
+    }
   };
 
   /** 静的版 PageContentRenderer.getSpreadReadText/getPageReadTextByIndex を利用 */
@@ -341,11 +464,12 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
 
   useImperativeHandle(ref, () => ({ goNext, goPrev, jumpToSpread, getReadText, exportPdf }));
 
-  // ── スワイプ（ドラッグ）でのページめくり。スマホのみ。──
+  // ── ドラッグ（スワイプ/マウス）でのページめくり。──
   // 静的版 BookController._bindSwipeGesture と同じロジック:
-  //   touchstart → beginDrag()
-  //   touchmove  → updateDragProgress(deltaX)（rAFで1フレームに間引く）
-  //   touchend   → endDrag() で確定/キャンセルを判定し、残りを自動補完
+  //   start → beginDrag()
+  //   move  → updateDragProgress(deltaX)（rAFで1フレームに間引く）
+  //   end   → endDrag() で確定/キャンセルを判定し、残りを自動補完
+  // タッチはスマホのみ、マウスはPC/スマホ問わず有効（静的版と同じ）。
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -368,27 +492,23 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
       });
     };
 
-    const onTouchStart = (e: TouchEvent) => {
+    const onStart = (clientX: number) => {
       const eng = engineRef.current;
-      // スマホのみ対応（PCはボタン/キーボードでの操作のまま）
-      if (!eng || !isMobileRef.current) return;
-      const started = eng.animator.beginDrag(
-        eng.contentRenderer.pages,
-        currentPageIdxRef.current,
-        true
-      );
+      if (!eng) return;
+      const items = isMobileRef.current ? eng.contentRenderer.pages : eng.contentRenderer.spreads;
+      const currentIdx = isMobileRef.current ? currentPageIdxRef.current : currentSpreadRef.current;
+      const started = eng.animator.beginDrag(items, currentIdx, isMobileRef.current);
       if (!started) return;
-      startX = e.touches[0].clientX;
+      startX = clientX;
       dragActive = true;
     };
 
-    const onTouchMove = (e: TouchEvent) => {
+    const onMove = (clientX: number) => {
       if (!dragActive || startX === null) return;
-      e.preventDefault(); // ページ全体のスクロールを止める
-      scheduleRender(e.touches[0].clientX - startX);
+      scheduleRender(clientX - startX);
     };
 
-    const onTouchEnd = () => {
+    const onEnd = () => {
       const eng = engineRef.current;
       if (!dragActive || !eng) return;
 
@@ -403,8 +523,13 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
         render,
         (finishedIdx: number) => {
           // 確定: ページ送りが実際に起きた
-          currentPageIdxRef.current = finishedIdx;
-          currentSpreadRef.current = Math.floor(finishedIdx / 2);
+          if (isMobileRef.current) {
+            currentPageIdxRef.current = finishedIdx;
+            currentSpreadRef.current = Math.floor(finishedIdx / 2);
+          } else {
+            currentSpreadRef.current = finishedIdx;
+            currentPageIdxRef.current = finishedIdx * 2;
+          }
           render();
           notify();
         },
@@ -421,15 +546,38 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
       );
     };
 
+    // ── タッチイベント（スマホのみ） ──
+    const onTouchStart = (e: TouchEvent) => {
+      if (!isMobileRef.current) return;
+      onStart(e.touches[0].clientX);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!dragActive) return;
+      e.preventDefault(); // ページ全体のスクロールを止める
+      onMove(e.touches[0].clientX);
+    };
+    const onTouchEnd = () => onEnd();
+
+    // ── マウスイベント（PC/スマホ問わず有効。動作確認用も兼ねる） ──
+    const onMouseDown = (e: MouseEvent) => onStart(e.clientX);
+    const onMouseMove = (e: MouseEvent) => onMove(e.clientX);
+    const onMouseUp = () => onEnd();
+
     canvas.addEventListener('touchstart', onTouchStart, { passive: true });
     canvas.addEventListener('touchmove', onTouchMove, { passive: false });
     canvas.addEventListener('touchend', onTouchEnd);
     canvas.addEventListener('touchcancel', onTouchEnd);
+    canvas.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
     return () => {
       canvas.removeEventListener('touchstart', onTouchStart);
       canvas.removeEventListener('touchmove', onTouchMove);
       canvas.removeEventListener('touchend', onTouchEnd);
       canvas.removeEventListener('touchcancel', onTouchEnd);
+      canvas.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

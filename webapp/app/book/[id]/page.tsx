@@ -5,15 +5,17 @@
    このページは「本の読み込み」「TOC・カウンター等の周辺UI」
    「しおり」だけを担当する。
 
-   静的版から移植済みの機能:
-     ・前へ/次へ・キーボード（←→）
+   静的版から移植済みの機能（ほぼ全機能）:
+     ・前へ/次へ・キーボード（←→）・ドラッグ（スマホはタッチ、PC/スマホ問わずマウス）
      ・本物のページめくりアニメーション（PageFlipEffectのカール）
+     ・目次から遠くへジャンプするときのパラパラめくり（リフル）演出
      ・レスポンシブ（PC見開き/スマホ1ページを自動切替、CSSスケール追従）
      ・ページめくり音（🔊/🔇と目次内トグル、localStorageに記憶）
-     ・目次サイドバー（ハンバーガー→章ジャンプ）
-     ・読了プログレスバー（画面最上部の金の線）
+     ・目次サイドバー（ハンバーガー→章ジャンプ）・読了プログレスバー
      ・しおり（前回読んでいた見開きを本ごとに記憶して再開）
-   未移植: TTS・写真・PDF出力
+     ・写真の貼り付け（4種の留め方）
+     ・TTS読み上げ（女性/男性/自動の声選択）・自動ページ送り
+     ・PDF出力
    ================================================================ */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -22,6 +24,7 @@ import { Book } from '@/lib/types';
 import { useFlipSound } from '@/lib/useFlipSound';
 import { usePhotoStyle } from '@/lib/usePhotoStyle';
 import { useTTS } from '@/lib/useTTS';
+import { useAutoPlay } from '@/lib/useAutoPlay';
 import { BOOK_CONST } from '@/lib/engine/constants';
 import TocPanel, { buildToc } from '@/components/TocPanel';
 import BookCanvas, { BookCanvasHandle, BookCanvasState } from '@/components/BookCanvas';
@@ -61,6 +64,22 @@ export default function ReaderPage() {
     atEnd,
     flipDelayMs: BOOK_CONST.FLIP_MS,
   });
+
+  const autoPlay = useAutoPlay({
+    advance: () => canvasHandle.current?.goNext(),
+    atEnd,
+  });
+
+  // 読み上げと自動送りは競合するため、片方を始めたらもう片方は止める
+  // （静的版 _toggleTTS/_toggleAutoPlay と同じ方針）
+  const handleToggleTTS = () => {
+    if (!tts.active) autoPlay.stop();
+    tts.toggle();
+  };
+  const handleToggleAutoPlay = () => {
+    if (!autoPlay.active) tts.stop();
+    autoPlay.toggle();
+  };
 
   useEffect(() => {
     if (!supabase || !id) return;
@@ -158,7 +177,7 @@ export default function ReaderPage() {
         onClose={() => setTocOpen(false)}
         toc={buildToc(book.pages)}
         currentSpread={viewState.currentSpread}
-        onJump={(idx) => canvasHandle.current?.jumpToSpread(idx)}
+        onJump={(idx) => { autoPlay.stop(); canvasHandle.current?.jumpToSpread(idx); }}
         soundEnabled={sound.enabled}
         onToggleSound={sound.setEnabled}
         photoStyle={photoStyle.style}
@@ -187,8 +206,11 @@ export default function ReaderPage() {
           >
             {sound.enabled ? '🔊' : '🔇'}
           </button>
-          <button className="mini-link" onClick={tts.toggle} title="読み上げ">
+          <button className="mini-link" onClick={handleToggleTTS} title="読み上げ">
             {tts.active ? '⏹' : '📖'}
+          </button>
+          <button className="mini-link" onClick={handleToggleAutoPlay} title="自動ページ送り">
+            {autoPlay.active ? '⏸' : '▶'}
           </button>
           <button className="mini-link" onClick={() => router.push(`/book/${id}/manage`)}>
             ✎ 編集
@@ -210,7 +232,7 @@ export default function ReaderPage() {
       <div className="reader-controls">
         <button
           className="btn"
-          onClick={() => canvasHandle.current?.goPrev()}
+          onClick={() => { autoPlay.stop(); canvasHandle.current?.goPrev(); }}
           disabled={viewState.isMobile ? viewState.currentPageIdx === 0 : viewState.currentSpread === 0}
         >
           ← 前へ

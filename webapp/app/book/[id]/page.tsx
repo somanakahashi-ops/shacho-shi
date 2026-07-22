@@ -35,6 +35,8 @@ export default function ReaderPage() {
   const [book, setBook] = useState<Book | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const [error, setError] = useState('');
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState('');
   const sound = useFlipSound();
   const photoStyle = usePhotoStyle();
   const canvasHandle = useRef<BookCanvasHandle>(null);
@@ -102,6 +104,23 @@ export default function ReaderPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  async function handleExportPdf() {
+    if (!book || pdfBusy) return;
+    setPdfBusy(true);
+    setPdfStatus('準備中…');
+    try {
+      await canvasHandle.current?.exportPdf(book.title, (current, total) => {
+        setPdfStatus(`書き出し中… (${current}/${total})`);
+      });
+      setPdfStatus('ダウンロードを開始しました');
+    } catch {
+      setPdfStatus('PDFの作成に失敗しました');
+    } finally {
+      setPdfBusy(false);
+      setTimeout(() => setPdfStatus(''), 4000);
+    }
+  }
+
   if (!supabase) {
     return (
       <div className="shell">
@@ -146,6 +165,9 @@ export default function ReaderPage() {
         onPhotoStyleChange={photoStyle.setStyle}
         voicePref={tts.voicePref}
         onVoicePrefChange={tts.setVoicePref}
+        onExportPdf={handleExportPdf}
+        pdfBusy={pdfBusy}
+        pdfStatus={pdfStatus}
       />
 
       <div className="reader-top">

@@ -304,6 +304,13 @@
   max-width: 150px;
 }
 
+.toc-footer {
+  padding: 16px 20px 20px;
+  border-top: 1px solid rgba(201, 169, 97, 0.35);
+}
+.toc-pdf-btn { width: 100%; text-align: center; padding: 10px 16px; }
+.toc-pdf-status { margin-top: 8px; font-size: 0.78em; color: var(--ink-soft); text-align: center; }
+
 /* ── 読了プログレスバー ── */
 .progress-track {
   position: fixed;

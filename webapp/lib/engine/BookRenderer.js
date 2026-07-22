@@ -263,6 +263,7 @@ export class BookRenderer {
      * @param {Object} animState - { isAnimating, progress, offFront, offBack }
      * @param {Array} pages      - PageContentRenderer.pages
      * @param {number} currentPageIdx
+     * @param {HTMLImageElement|null} [pageImage] - 現在ページ（左ページ時のみ）に重ねる画像
      */
     renderMobile(animState, pages, currentPageIdx, pageImage = null) {
         const { MOB_W, MOB_H } = this.C;

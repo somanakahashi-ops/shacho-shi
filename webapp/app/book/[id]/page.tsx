@@ -20,6 +20,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { getSupabase } from '@/lib/supabase';
 import { Book } from '@/lib/types';
 import { useFlipSound } from '@/lib/useFlipSound';
+import { usePhotoStyle } from '@/lib/usePhotoStyle';
+import { useTTS } from '@/lib/useTTS';
+import { BOOK_CONST } from '@/lib/engine/constants';
 import TocPanel, { buildToc } from '@/components/TocPanel';
 import BookCanvas, { BookCanvasHandle, BookCanvasState } from '@/components/BookCanvas';
 
@@ -33,6 +36,7 @@ export default function ReaderPage() {
   const [tocOpen, setTocOpen] = useState(false);
   const [error, setError] = useState('');
   const sound = useFlipSound();
+  const photoStyle = usePhotoStyle();
   const canvasHandle = useRef<BookCanvasHandle>(null);
   const initialSpreadRef = useRef(0);
 
@@ -42,6 +46,18 @@ export default function ReaderPage() {
     spreadCount: 1,
     currentPageIdx: 0,
     pageCount: 1,
+  });
+
+  const atEnd = () =>
+    viewState.isMobile
+      ? viewState.currentPageIdx >= viewState.pageCount - 1
+      : viewState.currentSpread >= viewState.spreadCount - 1;
+
+  const tts = useTTS({
+    getText: () => canvasHandle.current?.getReadText() ?? '',
+    advance: () => canvasHandle.current?.goNext(),
+    atEnd,
+    flipDelayMs: BOOK_CONST.FLIP_MS,
   });
 
   useEffect(() => {
@@ -56,11 +72,12 @@ export default function ReaderPage() {
           setError('本が見つかりませんでした。URLをご確認ください。');
           return;
         }
+        const b = data as Book;
         // しおり: 前回の位置から再開（BookCanvas 初期化前に値だけ確保）
         const saved = Number(localStorage.getItem(bookmarkKey(id)) ?? '0');
-        const count = Math.ceil(((data as Book).pages.length || 1) / 2);
+        const count = Math.ceil((b.pages.length || 1) / 2);
         if (saved > 0 && saved < count) initialSpreadRef.current = saved;
-        setBook(data as Book);
+        setBook({ ...b, images: b.images ?? {} });
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -125,6 +142,10 @@ export default function ReaderPage() {
         onJump={(idx) => canvasHandle.current?.jumpToSpread(idx)}
         soundEnabled={sound.enabled}
         onToggleSound={sound.setEnabled}
+        photoStyle={photoStyle.style}
+        onPhotoStyleChange={photoStyle.setStyle}
+        voicePref={tts.voicePref}
+        onVoicePrefChange={tts.setVoicePref}
       />
 
       <div className="reader-top">
@@ -144,6 +165,9 @@ export default function ReaderPage() {
           >
             {sound.enabled ? '🔊' : '🔇'}
           </button>
+          <button className="mini-link" onClick={tts.toggle} title="読み上げ">
+            {tts.active ? '⏹' : '📖'}
+          </button>
           <button className="mini-link" onClick={() => router.push(`/book/${id}/manage`)}>
             ✎ 編集
           </button>
@@ -154,6 +178,8 @@ export default function ReaderPage() {
         <BookCanvas
           ref={canvasHandle}
           pages={book.pages}
+          images={book.images}
+          photoStyle={photoStyle.style}
           onStateChange={setViewState}
           onFlipStart={sound.play}
         />

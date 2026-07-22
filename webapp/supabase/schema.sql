@@ -16,12 +16,14 @@ create table if not exists public.books (
   title       text not null default 'わたしの自分史',
   author      text not null default '',
   pages       jsonb not null default '[]'::jsonb,
+  images      jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
 
--- 既存テーブルに author 列が無い場合の追加（再実行しても安全）
+-- 既存テーブルに列が無い場合の追加（再実行しても安全）
 alter table public.books add column if not exists author text not null default '';
+alter table public.books add column if not exists images jsonb not null default '{}'::jsonb;
 
 -- RLS を有効化し、anon ロールに必要最小限の操作を許可する
 alter table public.books enable row level security;

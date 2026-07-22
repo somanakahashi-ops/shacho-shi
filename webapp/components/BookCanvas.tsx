@@ -26,6 +26,7 @@ import { PageContentRenderer } from '@/lib/engine/PageContentRenderer';
 import { PageFlipEffect } from '@/lib/engine/PageFlipEffect';
 import { BookRenderer } from '@/lib/engine/BookRenderer';
 import { BookAnimator } from '@/lib/engine/BookAnimator';
+import { loadImageFromSrc } from '@/lib/engine/util';
 import { buildSpreadData } from '@/lib/buildSpreads';
 import { BookPage } from '@/lib/types';
 
@@ -41,16 +42,20 @@ export interface BookCanvasHandle {
   goNext: () => void;
   goPrev: () => void;
   jumpToSpread: (spreadIndex: number) => void;
+  /** 現在表示中のページ/見開きの読み上げテキストを返す（TTS用） */
+  getReadText: () => string;
 }
 
 interface Props {
   pages: BookPage[];
+  images?: Record<number, string>; // 見開きindex → 画像データURL（左ページに重ねる）
+  photoStyle?: string; // 'corners' | 'pushpin' | 'maskingtape' | 'tape'
   onStateChange: (s: BookCanvasState) => void;
   onFlipStart?: () => void; // 実際に移動が起きる瞬間に呼ぶ（めくり音用）
 }
 
 const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
-  { pages, onStateChange, onFlipStart },
+  { pages, images, photoStyle, onStateChange, onFlipStart },
   ref
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -64,6 +69,8 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
   const isMobileRef = useRef(false);
   const currentSpreadRef = useRef(0);
   const currentPageIdxRef = useRef(0);
+  // 見開きindex → 読み込み済み Image。静的版と同じく左ページにのみ重ねる。
+  const imageCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
 
   const notify = () => {
     const eng = engineRef.current;
@@ -82,19 +89,25 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
     if (!eng) return;
     const animState = eng.animator.state;
     if (isMobileRef.current) {
+      // 画像は見開きの「左ページ」＝偶数ページのときだけ重ねる
+      const isLeftPage = currentPageIdxRef.current % 2 === 0;
+      const pageImage = isLeftPage
+        ? imageCacheRef.current.get(currentPageIdxRef.current / 2) ?? null
+        : null;
       eng.bookRenderer.renderMobile(
         animState,
         eng.contentRenderer.pages,
         currentPageIdxRef.current,
-        null // 画像オーバーレイは未対応（後続で移植）
+        pageImage
       );
     } else {
+      const leftImage = imageCacheRef.current.get(currentSpreadRef.current) ?? null;
       eng.bookRenderer.renderPC(
         animState,
         eng.contentRenderer.spreads,
         currentSpreadRef.current,
         pcNextIdxRef.current,
-        null
+        leftImage
       );
     }
   };
@@ -178,6 +191,32 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
     // pages は初回マウント時点のものだけを使う（編集は別画面で行うため）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 画像の先読み。images が変わるたび（初回表示・編集からの帰還時など）
+  // 読み込み直し、完了した分から順に再描画する。
+  useEffect(() => {
+    if (!images) return;
+    let cancelled = false;
+    Object.entries(images).forEach(([key, dataUrl]) => {
+      const idx = Number(key);
+      loadImageFromSrc(dataUrl).then((img: HTMLImageElement) => {
+        if (cancelled) return;
+        imageCacheRef.current.set(idx, img);
+        render();
+      }).catch(() => { /* 読み込み失敗時は画像なしのまま表示を続ける */ });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [images]);
+
+  // 写真の留め方（コーナー/画鋲/マステ/テープ）。変更のたび再描画する。
+  useEffect(() => {
+    const eng = engineRef.current;
+    if (!eng || !photoStyle) return;
+    eng.contentRenderer.photoStyle = photoStyle;
+    render();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoStyle]);
 
   const goNext = () => {
     const eng = engineRef.current;
@@ -282,7 +321,109 @@ const BookCanvas = forwardRef<BookCanvasHandle, Props>(function BookCanvas(
     notify();
   };
 
-  useImperativeHandle(ref, () => ({ goNext, goPrev, jumpToSpread }));
+  /** 静的版 PageContentRenderer.getSpreadReadText/getPageReadTextByIndex を利用 */
+  const getReadText = () => {
+    const eng = engineRef.current;
+    if (!eng) return '';
+    return isMobileRef.current
+      ? eng.contentRenderer.getPageReadTextByIndex(currentPageIdxRef.current)
+      : eng.contentRenderer.getSpreadReadText(currentSpreadRef.current);
+  };
+
+  useImperativeHandle(ref, () => ({ goNext, goPrev, jumpToSpread, getReadText }));
+
+  // ── スワイプ（ドラッグ）でのページめくり。スマホのみ。──
+  // 静的版 BookController._bindSwipeGesture と同じロジック:
+  //   touchstart → beginDrag()
+  //   touchmove  → updateDragProgress(deltaX)（rAFで1フレームに間引く）
+  //   touchend   → endDrag() で確定/キャンセルを判定し、残りを自動補完
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let startX: number | null = null;
+    let dragActive = false;
+    let pendingDeltaX: number | null = null;
+    let renderScheduled = false;
+
+    const scheduleRender = (deltaX: number) => {
+      pendingDeltaX = deltaX;
+      if (renderScheduled) return;
+      renderScheduled = true;
+      requestAnimationFrame(() => {
+        renderScheduled = false;
+        const eng = engineRef.current;
+        if (pendingDeltaX === null || !dragActive || !eng) return;
+        eng.animator.updateDragProgress(pendingDeltaX);
+        render();
+      });
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      const eng = engineRef.current;
+      // スマホのみ対応（PCはボタン/キーボードでの操作のまま）
+      if (!eng || !isMobileRef.current) return;
+      const started = eng.animator.beginDrag(
+        eng.contentRenderer.pages,
+        currentPageIdxRef.current,
+        true
+      );
+      if (!started) return;
+      startX = e.touches[0].clientX;
+      dragActive = true;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!dragActive || startX === null) return;
+      e.preventDefault(); // ページ全体のスクロールを止める
+      scheduleRender(e.touches[0].clientX - startX);
+    };
+
+    const onTouchEnd = () => {
+      const eng = engineRef.current;
+      if (!dragActive || !eng) return;
+
+      if (pendingDeltaX !== null) {
+        eng.animator.updateDragProgress(pendingDeltaX);
+        pendingDeltaX = null;
+      }
+      dragActive = false;
+      startX = null;
+
+      eng.animator.endDrag(
+        render,
+        (finishedIdx: number) => {
+          // 確定: ページ送りが実際に起きた
+          currentPageIdxRef.current = finishedIdx;
+          currentSpreadRef.current = Math.floor(finishedIdx / 2);
+          render();
+          notify();
+        },
+        () => {
+          // キャンセル: 位置は変わらないが元の見た目に戻すため再描画
+          render();
+          notify();
+        },
+        () => {
+          // 確定が決まった瞬間（残りの自動補完アニメーションの前）に
+          // 呼ばれる。ボタン操作と揃うタイミングでめくり音を鳴らす。
+          onFlipStart?.();
+        }
+      );
+    };
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd);
+    canvas.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── スワイプ（ドラッグ）でのページめくり。スマホのみ。──
   // 静的版 BookController._bindSwipeGesture と同じロジック:

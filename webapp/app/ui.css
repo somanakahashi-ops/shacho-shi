@@ -291,6 +291,17 @@
   color: var(--ink-soft);
   padding: 8px 0;
   cursor: pointer;
+  gap: 10px;
+}
+.toc-select {
+  font-family: inherit;
+  font-size: 0.85em;
+  color: var(--ink);
+  border: 1px solid rgba(120, 110, 95, 0.4);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #fff;
+  max-width: 150px;
 }
 
 /* ── 読了プログレスバー ── */
@@ -310,6 +321,62 @@
 }
 
 /* ── 編集画面 ── */
+.tabs { display: flex; gap: 8px; margin: 18px 0 16px; }
+.tab {
+  padding: 9px 18px;
+  border: 1px solid rgba(201, 169, 97, 0.4);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: rgba(201, 169, 97, 0.08);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.tab.active { background: var(--paper); color: var(--ink); font-weight: bold; }
+
+/* 画像タブ */
+.photo-list { display: flex; flex-direction: column; }
+.photo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(201, 169, 97, 0.2);
+}
+.photo-row:last-child { border-bottom: none; }
+.photo-label { flex: 1; font-size: 0.9em; color: var(--ink); min-width: 0; }
+.photo-thumb {
+  width: 92px;
+  height: 64px;
+  flex-shrink: 0;
+  border: 1px solid rgba(120, 110, 95, 0.4);
+  border-radius: 6px;
+  background: #f0ece4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.photo-empty { font-size: 0.72em; color: #aaa; }
+.photo-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-mini {
+  display: inline-block;
+  padding: 7px 14px;
+  font-size: 0.8em;
+  font-family: inherit;
+  border: 1px solid rgba(201, 169, 97, 0.5);
+  border-radius: 6px;
+  background: rgba(201, 169, 97, 0.1);
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-mini:hover { background: rgba(201, 169, 97, 0.2); }
+.btn-mini-danger { border-color: rgba(190, 80, 70, 0.5); color: var(--danger); background: rgba(190, 80, 70, 0.06); }
+.btn-mini-danger:hover { background: rgba(190, 80, 70, 0.14); }
+
 .editor-card {
   background: var(--paper);
   border: 1px solid rgba(201, 169, 97, 0.35);
@@ -391,4 +458,8 @@ textarea.input { min-height: 160px; resize: vertical; line-height: 1.7; }
   }
   .reader-top .mini-link { padding: 6px 10px; font-size: 0.75em; }
   .toc-toggle-btn { width: 36px; height: 36px; }
+
+  /* 画像タブ: 横幅が狭いのでラベル/サムネ/操作を縦積みにする */
+  .photo-row { flex-wrap: wrap; }
+  .photo-label { flex-basis: 100%; }
 }

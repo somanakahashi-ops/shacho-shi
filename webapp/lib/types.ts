@@ -21,6 +21,9 @@ export interface Book {
     title: string;       // 本のタイトル（一覧表示用）
     author: string;      // 作者名（本棚でユーザーを選ぶときの表示名）
     pages: BookPage[];   // ページ配列（先頭が表紙）
+    // 見開きインデックス（0始まり）→ 画像データURL。
+    // 静的版と同じく画像は各見開きの「左ページ」に表示される。
+    images: Record<number, string>;
     created_at?: string;
     updated_at?: string;
 }

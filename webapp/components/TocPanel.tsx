@@ -36,6 +36,10 @@ export default function TocPanel({
     onJump,
     soundEnabled,
     onToggleSound,
+    photoStyle,
+    onPhotoStyleChange,
+    voicePref,
+    onVoicePrefChange,
 }: {
     open: boolean;
     onClose: () => void;
@@ -44,6 +48,10 @@ export default function TocPanel({
     onJump: (spreadIndex: number) => void;
     soundEnabled: boolean;
     onToggleSound: (on: boolean) => void;
+    photoStyle: string;
+    onPhotoStyleChange: (style: string) => void;
+    voicePref: string;
+    onVoicePrefChange: (pref: string) => void;
 }) {
     return (
         <>
@@ -73,6 +81,31 @@ export default function TocPanel({
                             checked={soundEnabled}
                             onChange={(e) => onToggleSound(e.target.checked)}
                         />
+                    </label>
+                    <label className="toc-toggle-row">
+                        <span>写真の留め方</span>
+                        <select
+                            className="toc-select"
+                            value={photoStyle}
+                            onChange={(e) => onPhotoStyleChange(e.target.value)}
+                        >
+                            <option value="corners">コーナー留め</option>
+                            <option value="pushpin">画鋲</option>
+                            <option value="maskingtape">マスキングテープ</option>
+                            <option value="tape">テープ</option>
+                        </select>
+                    </label>
+                    <label className="toc-toggle-row">
+                        <span>読み上げの声</span>
+                        <select
+                            className="toc-select"
+                            value={voicePref}
+                            onChange={(e) => onVoicePrefChange(e.target.value)}
+                        >
+                            <option value="female">女性</option>
+                            <option value="male">男性</option>
+                            <option value="auto">自動</option>
+                        </select>
                     </label>
                 </div>
             </nav>
